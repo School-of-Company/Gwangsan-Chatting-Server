@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatGateway } from './chat.gateway';
-import { ISEND_CHAT_MESSAGE_SERVICE, IAUTH_TOKEN_SERVICE } from 'src/core/di.tokens';
+import { ISEND_CHAT_MESSAGE_SERVICE, IAUTH_TOKEN_SERVICE } from 'src/global/core/di.tokens';
 
 const mockSendChatMessageService = {
   execute: jest.fn(),

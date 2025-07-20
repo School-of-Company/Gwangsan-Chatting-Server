@@ -1,18 +1,17 @@
 import { Injectable } from "@nestjs/common";
 import { ISendChatMessageService } from "../isend-chat-message.interface";
 import { Socket } from "socket.io";
-import { ChatMessageRequest } from "src/chat/dto/chat-message-request.dto";
-import { ChatmessageResponseDto } from "src/chat/dto/chat-message-response.dto";
-import { ChatImageResponse } from "src/chat/dto/chat-image-response.dto";
+import { ChatMessageRequest } from "src/domain/chat/dto/chat-message-request.dto";
+import { ChatmessageResponseDto } from "src/domain/chat/dto/chat-message-response.dto";
+import { ChatImageResponse } from "src/domain/chat/dto/chat-image-response.dto";
 import axios from "axios";
-import { ChatSaveMessageDto } from "src/chat/dto/chat-save-message.dto";
+import { ChatSaveMessageDto } from "src/domain/chat/dto/chat-save-message.dto";
 
 @Injectable()
 export class SendChatMessageService implements ISendChatMessageService {
+    private readonly CONTEXT = SendChatMessageService.name;
 
     async execute(message: ChatMessageRequest, client: Socket, token: string): Promise<ChatmessageResponseDto> {
-        console.log(`[SendChatMessageService] Sending POST to Spring /api/chat with token: ${token} and message:`, message);
-
         try {
             const { data: response } = await axios.post<ChatSaveMessageDto>(
                 `${process.env.SPRING_SERVER_URL}/api/chat`,
@@ -21,8 +20,6 @@ export class SendChatMessageService implements ISendChatMessageService {
                     headers: { Authorization: `${token}` }
                 }
             );
-
-            console.log('[SendChatMessageService] Received response from Spring:', response);
 
             let imageResponses: ChatImageResponse[] | null = null;
 
@@ -43,7 +40,6 @@ export class SendChatMessageService implements ISendChatMessageService {
                 true
             );
         } catch (error) {
-            console.error('[SendChatMessageService] Error calling Spring /api/chat:', error);
             throw error;
         }
     }

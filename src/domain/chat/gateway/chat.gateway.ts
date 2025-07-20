@@ -4,7 +4,7 @@ import { Server, Socket } from 'socket.io';
 import { ChatMessageRequest } from '../dto/chat-message-request.dto';
 import { ChatmessageResponseDto } from '../dto/chat-message-response.dto';
 import { memberInfo } from '../dto/chat-member-info.dto';
-import { IAUTH_TOKEN_SERVICE, ISEND_CHAT_MESSAGE_SERVICE } from 'src/core/di.tokens';
+import { IAUTH_TOKEN_SERVICE, ISEND_CHAT_MESSAGE_SERVICE } from 'src/global/core/di.tokens';
 import { ISendChatMessageService } from '../service/isend-chat-message.interface';
 import { IAuthTokenService } from '../service/iauth-token.service';
 
@@ -19,18 +19,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
   afterInit(server: Server) {
     this.server = server;
-    console.log('Socket server initialized');
   }
 
   async handleConnection(client: Socket): Promise<void> {
     try {
       const token = client.handshake.auth.token;
 
-      if (!token) {
-        console.log(`Clinet disconnected: ${client.id}`);
-        client.disconnect();
-        return;
-      }
+      this.validateToken(token, client);
 
       const memberInfo: memberInfo = await this.authTokenService.execute(token);
 
@@ -42,7 +37,6 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   }
 
   handleDisconnect(client: Socket) {
-    console.log(`Clinet disconnected: ${client.id}`);
     client.disconnect();
   }
 
@@ -53,9 +47,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
   ): Promise<void> {
     const token = client.handshake.auth.token;
 
-    if (!token) {
-      throw new WsException('Authorization header missing');
-    }
+    this.validateToken(token, client);
 
     client.join(`roomId=${message.roomId}`);
 
@@ -78,6 +70,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       );
   
       socket.emit('receiveMessage', customizedResponse);
+    }
+  }
+
+  private async validateToken(token: string, client: Socket): Promise<void> {
+    if (!token) {
+      client.disconnect();
+      throw new WsException('토큰을 찾을 수 없습니다');
     }
   }
 }
