@@ -70,6 +70,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
       );
   
       socket.emit('receiveMessage', customizedResponse);
+      
+      socket.emit('updateRoomList', {
+        roomId: response.roomId,
+        lastMessage: response.content,
+        lastMessageType: response.messageType,
+        lastMessageTime: response.createdAt,
+      });
     }
   }
 
