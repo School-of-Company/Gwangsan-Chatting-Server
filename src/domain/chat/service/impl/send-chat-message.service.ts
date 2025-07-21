@@ -2,7 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { ISendChatMessageService } from "../isend-chat-message.interface";
 import { Socket } from "socket.io";
 import { ChatMessageRequest } from "src/domain/chat/dto/chat-message-request.dto";
-import { ChatmessageResponseDto } from "src/domain/chat/dto/chat-message-response.dto";
+import { ChatMessageResponseDto } from "src/domain/chat/dto/chat-message-response.dto";
 import { ChatImageResponse } from "src/domain/chat/dto/chat-image-response.dto";
 import axios from "axios";
 import { ChatSaveMessageDto } from "src/domain/chat/dto/chat-save-message.dto";
@@ -11,7 +11,7 @@ import { ChatSaveMessageDto } from "src/domain/chat/dto/chat-save-message.dto";
 export class SendChatMessageService implements ISendChatMessageService {
     private readonly CONTEXT = SendChatMessageService.name;
 
-    async execute(message: ChatMessageRequest, client: Socket, token: string): Promise<ChatmessageResponseDto> {
+    async execute(message: ChatMessageRequest, client: Socket, token: string): Promise<ChatMessageResponseDto> {
         try {
             const { data: response } = await axios.post<ChatSaveMessageDto>(
                 `${process.env.SPRING_SERVER_URL}/api/chat`,
@@ -27,7 +27,7 @@ export class SendChatMessageService implements ISendChatMessageService {
                 imageResponses = response.images.map(img => new ChatImageResponse(img.imageId, img.imageUrl));
             }
 
-            return new ChatmessageResponseDto(
+            return new ChatMessageResponseDto(
                 response.messageId,
                 message.roomId,
                 message.content,
