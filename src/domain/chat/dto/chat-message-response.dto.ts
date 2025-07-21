@@ -1,7 +1,7 @@
 import { ChatImageResponse } from "./chat-image-response.dto";
 import { MessageType } from "./constant/message-type.enum";
 
-export class ChatmessageResponseDto {
+export class ChatMessageResponseDto {
     constructor(
         public readonly messageId: number,
         public readonly roomId: number,

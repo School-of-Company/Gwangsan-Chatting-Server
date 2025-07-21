@@ -2,7 +2,7 @@ import { Inject } from '@nestjs/common';
 import { ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, SubscribeMessage, WebSocketGateway, WebSocketServer, WsException } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { ChatMessageRequest } from '../dto/chat-message-request.dto';
-import { ChatmessageResponseDto } from '../dto/chat-message-response.dto';
+import { ChatMessageResponseDto } from '../dto/chat-message-response.dto';
 import { memberInfo } from '../dto/chat-member-info.dto';
 import { IAUTH_TOKEN_SERVICE, ISEND_CHAT_MESSAGE_SERVICE } from 'src/global/core/di.tokens';
 import { ISendChatMessageService } from '../service/isend-chat-message.interface';
@@ -56,7 +56,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const sockets = await this.server.in(`roomId=${message.roomId}`).fetchSockets();
 
     for (const socket of sockets) {
-      const customizedResponse = new ChatmessageResponseDto(
+      const customizedResponse = new ChatMessageResponseDto(
         response.messageId,
         response.roomId,
         response.content,
