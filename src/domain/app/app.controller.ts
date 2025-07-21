@@ -3,7 +3,7 @@ import { Controller, Get } from '@nestjs/common';
 @Controller('api/health')
 export class AppController {
 
-    @Get()
+    @Get('/check')
     async health() {
         return 'ok';
     }

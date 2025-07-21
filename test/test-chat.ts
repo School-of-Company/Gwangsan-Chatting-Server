@@ -1,7 +1,7 @@
 import { io } from "socket.io-client";
 
 // 서버 URL과 토큰 설정
-const SERVER_URL = "http://localhost:3000/api/chat"; // 서버 주소 바꿔주세요
+const SERVER_URL = "https://api.gwangsan.io.kr/api/chat"; // 서버 주소 바꿔주세요
 
 // 소켓 연결 (헤더 Authorization 대신 auth로 토큰 전달, 필요에 따라 변경)
 const socket = io(SERVER_URL, {
