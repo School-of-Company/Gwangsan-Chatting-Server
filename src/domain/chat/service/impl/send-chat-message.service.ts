@@ -14,7 +14,7 @@ export class SendChatMessageService implements ISendChatMessageService {
     async execute(message: ChatMessageRequest, client: Socket, token: string): Promise<ChatMessageResponseDto> {
         try {
             const { data: response } = await axios.post<ChatSaveMessageDto>(
-                `${process.env.SPRING_SERVER_URL}/api/chat`,
+                `${process.env.SPRING_SERVER_URL}/api/chat/message`,
                 message,
                 {
                     headers: { Authorization: `${token}` }
