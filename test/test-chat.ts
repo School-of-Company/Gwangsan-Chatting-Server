@@ -1,12 +1,12 @@
 import { io } from "socket.io-client";
 
 // 서버 URL과 토큰 설정
-const SERVER_URL = "http://localhost:3000"; // 서버 주소 바꿔주세요
+const SERVER_URL = "http://localhost:3000/api/chat"; // 서버 주소 바꿔주세요
 
 // 소켓 연결 (헤더 Authorization 대신 auth로 토큰 전달, 필요에 따라 변경)
 const socket = io(SERVER_URL, {
     auth: {
-             token:  `Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIwMTAxMTExMTE3NiIsImF1dGgiOiJST0xFX1JPTEVfSEVBRF9BRE1JTiIsImlhdCI6MTc1Mjk5MDg0MiwiZXhwIjoxNzUzMDc3MjQyfQ.p7w3P4H2jEQFl9XSOT-FEZRfpkykgUtuyjNEHP7Xgx4`,  
+             token:  `Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIwMTAxMTExMTExNiIsImF1dGgiOiJST0xFX1JPTEVfSEVBRF9BRE1JTiIsImlhdCI6MTc1MzA1NjAwNCwiZXhwIjoxNzUzMTQyNDA0fQ.XPvNgSX1jQcOwbxMRoIJUKtDBQjYwP9Zoxlb3tx6NP4`,  
    },
 
 });

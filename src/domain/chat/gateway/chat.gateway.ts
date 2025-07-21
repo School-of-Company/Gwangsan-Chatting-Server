@@ -8,7 +8,7 @@ import { IAUTH_TOKEN_SERVICE, ISEND_CHAT_MESSAGE_SERVICE } from 'src/global/core
 import { ISendChatMessageService } from '../service/isend-chat-message.interface';
 import { IAuthTokenService } from '../service/iauth-token.service';
 
-@WebSocketGateway({cors: true})
+@WebSocketGateway({cors: true, namespace: '/api/chat'})
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
 
