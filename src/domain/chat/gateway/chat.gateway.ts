@@ -2,15 +2,19 @@ import { Inject } from '@nestjs/common';
 import { ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, SubscribeMessage, WebSocketGateway, WebSocketServer, WsException } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { ChatMessageRequest } from '../dto/chat-message-request.dto';
-import { ChatmessageResponseDto } from '../dto/chat-message-response.dto';
+import { ChatMessageResponseDto } from '../dto/chat-message-response.dto';
 import { memberInfo } from '../dto/chat-member-info.dto';
 import { IAUTH_TOKEN_SERVICE, ISEND_CHAT_MESSAGE_SERVICE } from 'src/global/core/di.tokens';
 import { ISendChatMessageService } from '../service/isend-chat-message.interface';
 import { IAuthTokenService } from '../service/iauth-token.service';
+import { Logger } from '@nestjs/common';
+
 
 @WebSocketGateway({cors: true, namespace: '/api/chat'})
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
+
+  private readonly logger = new Logger(ChatGateway.name);
 
   constructor(
     @Inject(ISEND_CHAT_MESSAGE_SERVICE) private readonly sendChatMessageService: ISendChatMessageService,
@@ -45,6 +49,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() message: ChatMessageRequest,
     @ConnectedSocket() client: Socket,
   ): Promise<void> {
+
+    this.logger.log(`🔔 sendMessage 요청 수신: ${JSON.stringify(message)}`);
+
     const token = client.handshake.auth.token;
 
     this.validateToken(token, client);
@@ -56,7 +63,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     const sockets = await this.server.in(`roomId=${message.roomId}`).fetchSockets();
 
     for (const socket of sockets) {
-      const customizedResponse = new ChatmessageResponseDto(
+      const customizedResponse = new ChatMessageResponseDto(
         response.messageId,
         response.roomId,
         response.content,
