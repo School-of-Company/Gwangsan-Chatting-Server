@@ -1,7 +1,7 @@
 import { Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { Socket } from 'socket.io';
 import axios from 'axios';
-import { memberInfo } from './dto/chat-member-info.dto';
+import { MemberInfo } from './dto/chat-member-info.dto';
 import { ChatMessageRequest } from './dto/chat-message-request.dto';
 import { ChatMessageResponseDto } from './dto/chat-message-response.dto';
 import { ChatImageResponse } from './dto/chat-image-response.dto';
@@ -10,7 +10,7 @@ import { ChatSaveMessageDto } from './dto/chat-save-message.dto';
 @Injectable()
 export class ChatService {
 
-    async validateToken(token: string): Promise<memberInfo> {
+    async validateToken(token: string): Promise<MemberInfo> {
         try {
             const response = await axios.get(
                 `${process.env.SPRING_SERVER_URL}/api/auth`,

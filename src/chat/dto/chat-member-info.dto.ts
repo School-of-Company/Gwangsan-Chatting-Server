@@ -1,4 +1,4 @@
-export interface memberInfo {
+export interface MemberInfo {
     memberId: string;
     nickname: string;
 }
