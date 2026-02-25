@@ -1,4 +1,4 @@
-import { MessageType } from "./constant/message-type.enum";
+import { MessageType } from './message-type.enum';
 
 export class ChatMessageRequest {
   constructor(

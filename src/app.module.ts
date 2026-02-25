@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
-
-import { ChatModule } from '../chat/chat.module';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
+import { ChatModule } from './chat/chat.module';
 
 @Module({
   imports: [
