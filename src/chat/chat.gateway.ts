@@ -1,25 +1,14 @@
-import { Inject } from '@nestjs/common';
 import { ConnectedSocket, MessageBody, OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit, SubscribeMessage, WebSocketGateway, WebSocketServer, WsException } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { ChatMessageRequest } from '../dto/chat-message-request.dto';
-import { ChatMessageResponseDto } from '../dto/chat-message-response.dto';
-import { memberInfo } from '../dto/chat-member-info.dto';
-import { IAUTH_TOKEN_SERVICE, ISEND_CHAT_MESSAGE_SERVICE } from 'src/global/core/di.tokens';
-import { ISendChatMessageService } from '../service/isend-chat-message.interface';
-import { IAuthTokenService } from '../service/iauth-token.service';
-import { Logger } from '@nestjs/common';
+import { ChatService } from './chat.service';
+import { ChatMessageRequest } from './dto/chat-message-request.dto';
+import { ChatMessageResponseDto } from './dto/chat-message-response.dto';
 
-
-@WebSocketGateway({cors: true, namespace: '/api/chat'})
+@WebSocketGateway({ cors: true, namespace: '/api/chat' })
 export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer() server: Server;
 
-  private readonly logger = new Logger(ChatGateway.name);
-
-  constructor(
-    @Inject(ISEND_CHAT_MESSAGE_SERVICE) private readonly sendChatMessageService: ISendChatMessageService,
-    @Inject(IAUTH_TOKEN_SERVICE) private readonly authTokenService: IAuthTokenService,
-  ) {}
+  constructor(private readonly chatService: ChatService) {}
 
   afterInit(server: Server) {
     this.server = server;
@@ -31,7 +20,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
 
       this.validateToken(token, client);
 
-      const memberInfo: memberInfo = await this.authTokenService.execute(token);
+      const memberInfo = await this.chatService.validateToken(token);
 
       client.data.memberId = memberInfo.memberId;
       client.data.nickname = memberInfo.nickname;
@@ -49,16 +38,13 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     @MessageBody() message: ChatMessageRequest,
     @ConnectedSocket() client: Socket,
   ): Promise<void> {
-
-    this.logger.log(`🔔 sendMessage 요청 수신: ${JSON.stringify(message)}`);
-
     const token = client.handshake.auth.token;
 
     this.validateToken(token, client);
 
     client.join(`roomId=${message.roomId}`);
 
-    const response = await this.sendChatMessageService.execute(message, client, token);
+    const response = await this.chatService.sendMessage(message, client, token);
 
     const sockets = await this.server.in(`roomId=${message.roomId}`).fetchSockets();
 
@@ -75,9 +61,9 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
         response.checked,
         socket.data.memberId === response.senderId
       );
-  
+
       socket.emit('receiveMessage', customizedResponse);
-      
+
       socket.emit('updateRoomList', {
         roomId: response.roomId,
         lastMessage: response.content,
@@ -87,7 +73,7 @@ export class ChatGateway implements OnGatewayInit, OnGatewayConnection, OnGatewa
     }
   }
 
-  private async validateToken(token: string, client: Socket): Promise<void> {
+  private validateToken(token: string, client: Socket): void {
     if (!token) {
       client.disconnect();
       throw new WsException('토큰을 찾을 수 없습니다');
