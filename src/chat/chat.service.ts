@@ -3,7 +3,7 @@ import { Socket } from 'socket.io';
 import axios from 'axios';
 import { memberInfo } from './dto/chat-member-info.dto';
 import { ChatMessageRequest } from './dto/chat-message-request.dto';
-import { ChatmessageResponseDto } from './dto/chat-message-response.dto';
+import { ChatMessageResponseDto } from './dto/chat-message-response.dto';
 import { ChatImageResponse } from './dto/chat-image-response.dto';
 import { ChatSaveMessageDto } from './dto/chat-save-message.dto';
 
@@ -31,36 +31,32 @@ export class ChatService {
         }
     }
 
-    async sendMessage(message: ChatMessageRequest, client: Socket, token: string): Promise<ChatmessageResponseDto> {
-        try {
-            const { data: response } = await axios.post<ChatSaveMessageDto>(
-                `${process.env.SPRING_SERVER_URL}/api/chat`,
-                message,
-                {
-                    headers: { Authorization: `${token}` }
-                }
-            );
-
-            let imageResponses: ChatImageResponse[] | null = null;
-
-            if (response.images && Array.isArray(response.images) && response.images.length > 0) {
-                imageResponses = response.images.map(img => new ChatImageResponse(img.imageId, img.imageUrl));
+    async sendMessage(message: ChatMessageRequest, client: Socket, token: string): Promise<ChatMessageResponseDto> {
+        const { data: response } = await axios.post<ChatSaveMessageDto>(
+            `${process.env.SPRING_SERVER_URL}/api/chat`,
+            message,
+            {
+                headers: { Authorization: `Bearer ${token}` }
             }
+        );
 
-            return new ChatmessageResponseDto(
-                response.messageId,
-                message.roomId,
-                message.content,
-                message.messageType,
-                response.createdAt,
-                imageResponses,
-                client.data.nickname,
-                client.data.memberId,
-                false,
-                true
-            );
-        } catch (error) {
-            throw error;
+        let imageResponses: ChatImageResponse[] | null = null;
+
+        if (response.images?.length) {
+            imageResponses = response.images.map(img => new ChatImageResponse(img.imageId, img.imageUrl));
         }
+
+        return new ChatMessageResponseDto(
+            response.messageId,
+            message.roomId,
+            message.content,
+            message.messageType,
+            response.createdAt,
+            imageResponses,
+            client.data.nickname,
+            client.data.memberId,
+            false,
+            true
+        );
     }
 }
