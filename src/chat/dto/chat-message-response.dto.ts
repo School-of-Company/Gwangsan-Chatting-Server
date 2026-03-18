@@ -1,5 +1,5 @@
-import { ChatImageResponse } from "./chat-image-response.dto";
-import { MessageType } from "./constant/message-type.enum";
+import { ChatImageResponse } from './chat-image-response.dto';
+import { MessageType } from './message-type.enum';
 
 export class ChatMessageResponseDto {
     constructor(

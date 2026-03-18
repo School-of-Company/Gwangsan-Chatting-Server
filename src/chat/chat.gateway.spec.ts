@@ -1,14 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatGateway } from './chat.gateway';
-import { ISEND_CHAT_MESSAGE_SERVICE, IAUTH_TOKEN_SERVICE } from 'src/global/core/di.tokens';
+import { ChatService } from './chat.service';
 
-const mockSendChatMessageService = {
-  execute: jest.fn(),
-  notifyReadStatusToSpring: jest.fn(),
-};
-
-const mockAuthTokenService = {
-  execute: jest.fn(),
+const mockChatService = {
+  validateToken: jest.fn(),
+  sendMessage: jest.fn(),
 };
 
 describe('ChatGateway', () => {
@@ -19,12 +15,8 @@ describe('ChatGateway', () => {
       providers: [
         ChatGateway,
         {
-          provide: ISEND_CHAT_MESSAGE_SERVICE,
-          useValue: mockSendChatMessageService,
-        },
-        {
-          provide: IAUTH_TOKEN_SERVICE,
-          useValue: mockAuthTokenService,
+          provide: ChatService,
+          useValue: mockChatService,
         },
       ],
     }).compile();
