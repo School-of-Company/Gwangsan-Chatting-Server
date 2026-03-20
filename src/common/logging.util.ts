@@ -4,7 +4,10 @@ import 'winston-daily-rotate-file';
 const logger = createLogger({
   format: format.combine(
     format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
-    format.printf(({ timestamp, level, message }) => `[${timestamp}] [${level.toUpperCase()}] ${message}`),
+    format.printf(
+      ({ timestamp, level, message }) =>
+        `[${String(timestamp)}] [${level.toUpperCase()}] ${String(message)}`,
+    ),
   ),
   transports: [
     new transports.Console(),
@@ -26,11 +29,16 @@ const logger = createLogger({
 });
 
 export class LoggingUtil {
-  static log(context: string, message: string, ...optionalParams: any[]): void {
-    logger.info(`[${context}] ${message}`, ...optionalParams);
+  static log(context: string, message: string): void {
+    logger.info(`[${context}] ${message}`);
   }
 
-  static error(context: string, message: string, ...optionalParams: any[]): void {
-    logger.error(`[${context}] ${message}`, ...optionalParams);
+  static error(context: string, message: string, error?: unknown): void {
+    const errorStr = error
+      ? error instanceof Error
+        ? ` | ${error.stack ?? error.message}`
+        : ` | ${JSON.stringify(error)}`
+      : '';
+    logger.error(`[${context}] ${message}${errorStr}`);
   }
 }

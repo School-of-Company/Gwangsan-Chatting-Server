@@ -4,10 +4,7 @@ import { AppController } from './app.controller';
 import { ChatModule } from './chat/chat.module';
 
 @Module({
-  imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    ChatModule
-  ],
-  controllers: [AppController]
+  imports: [ConfigModule.forRoot({ isGlobal: true }), ChatModule],
+  controllers: [AppController],
 })
 export class AppModule {}
