@@ -34,7 +34,11 @@ export class LoggingUtil {
   }
 
   static error(context: string, message: string, error?: unknown): void {
-    const errorStr = error instanceof Error ? ` | ${error.message}` : '';
+    const errorStr = error
+      ? error instanceof Error
+        ? ` | ${error.stack ?? error.message}`
+        : ` | ${JSON.stringify(error)}`
+      : '';
     logger.error(`[${context}] ${message}${errorStr}`);
   }
 }
