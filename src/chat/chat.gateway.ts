@@ -36,7 +36,7 @@ export class ChatGateway
   async handleConnection(client: Socket): Promise<void> {
     LoggingUtil.log('ChatGateway', `클라이언트 연결 시도: ${client.id}`);
     try {
-      const token = client.handshake.auth.token as string;
+      const token = String(client.handshake.auth.token ?? '');
 
       this.validateToken(token, client);
 
@@ -101,7 +101,7 @@ export class ChatGateway
       `메시지 수신: clientId=${client.id}, roomId=${message.roomId}`,
     );
     try {
-      const token = client.handshake.auth.token as string;
+      const token = String(client.handshake.auth.token ?? '');
 
       this.validateToken(token, client);
 
