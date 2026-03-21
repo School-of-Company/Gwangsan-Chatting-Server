@@ -5,6 +5,6 @@ files:
     destination: /home/ec2-user/
 hooks:
   ApplicationStart:
-    - location: deploy.sh
+    - location: scripts/deploy.sh
       timeout: 300
       runas: root
