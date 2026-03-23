@@ -1,10 +1,27 @@
+import {
+  IsArray,
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
 import { MessageType } from './message-type.enum';
 
 export class ChatMessageRequest {
-  constructor(
-    public readonly roomId: number,
-    public readonly content: string | null,
-    public readonly imageIds: number[],
-    public readonly messageType: MessageType,
-  ) {}
+  @IsNumber()
+  @Min(1)
+  roomId: number;
+
+  @IsString()
+  @IsOptional()
+  content: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsNumber({}, { each: true })
+  imageIds: number[] = [];
+
+  @IsEnum(MessageType)
+  messageType: MessageType;
 }
