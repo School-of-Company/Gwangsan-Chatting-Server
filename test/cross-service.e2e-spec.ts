@@ -14,10 +14,12 @@ import {
 import { AppModule } from '../src/app.module';
 
 const JWT_SECRET = 'test-secret';
-const SPRING_JAR = path.resolve(
-  __dirname,
-  '../../Gwangsan-Server-clean/build/libs/gwangsan-0.0.1-SNAPSHOT.jar',
-);
+const SPRING_JAR =
+  process.env.SPRING_JAR_PATH ??
+  path.resolve(
+    __dirname,
+    '../../Gwangsan-Server-clean/build/libs/gwangsan-0.0.1-SNAPSHOT.jar',
+  );
 
 describe('Cross-Service E2E (NestJS → Redis Stream → Spring)', () => {
   let nestApp: INestApplication;
