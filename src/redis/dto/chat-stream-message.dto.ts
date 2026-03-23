@@ -33,7 +33,7 @@ export class ChatStreamMessageDto {
     dto.roomId = String(roomId);
     dto.senderId = String(senderId);
     dto.content = content ?? '';
-    dto.messageType = messageType ?? MessageType.TEXT;
+    dto.messageType = messageType;
     dto.imageIds = JSON.stringify(imageIds ?? []);
     dto.createdAt = String(createdAt.getTime());
     return dto;
