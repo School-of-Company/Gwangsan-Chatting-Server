@@ -1,28 +1,9 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import Redis from 'ioredis';
-import { LoggingUtil } from '../common/logging.util';
 
 @Injectable()
-export class RedisService implements OnModuleInit, OnModuleDestroy {
-  private client: Redis;
-
-  async onModuleInit() {
-    this.client = new Redis({
-      host: process.env.REDIS_HOST ?? 'localhost',
-      port: Number(process.env.REDIS_PORT ?? 6379),
-    });
-
-    this.client.on('error', (err) =>
-      LoggingUtil.error('RedisService', 'Redis 연결 오류', err),
-    );
-
-    await this.client.ping();
-    LoggingUtil.log('RedisService', 'Redis 연결 성공');
-  }
-
-  onModuleDestroy() {
-    void this.client.quit();
-  }
+export class RedisService {
+  constructor(@Inject('REDIS_CLIENT') private readonly client: Redis) {}
 
   async get(key: string): Promise<string | null> {
     return this.client.get(key);
