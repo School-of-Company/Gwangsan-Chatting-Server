@@ -15,7 +15,7 @@ async function bootstrap() {
       /^https?:\/\/.*\.exp\.direct$/,
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-internal-secret'],
     credentials: false,
   });
 

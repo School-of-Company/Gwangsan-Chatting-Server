@@ -16,6 +16,7 @@ import { AuthService } from '../auth/auth.service';
 import { ChatMessageRequest } from './dto/chat-message-request.dto';
 import { MessageType } from './dto/message-type.enum';
 import { LoggingUtil } from '../common/logging.util';
+import { ChatNotificationService } from './chat-notification.service';
 
 interface ClientData {
   memberId: number;
@@ -32,10 +33,12 @@ export class ChatGateway
   constructor(
     private readonly chatService: ChatService,
     private readonly authService: AuthService,
+    private readonly chatNotificationService: ChatNotificationService,
   ) {}
 
   afterInit(server: Server) {
     this.server = server;
+    this.chatNotificationService.setServer(server);
     server.use((socket, next) => {
       const token = String(socket.handshake.auth.token ?? '');
       if (!token) {
