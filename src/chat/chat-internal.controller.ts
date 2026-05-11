@@ -2,12 +2,12 @@ import {
   Body,
   Controller,
   Headers,
-  InternalServerErrorException,
   Post,
   UnauthorizedException,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ChatNotificationService } from './chat-notification.service';
 import { TransactionStateUpdateRequestDto } from './dto/transaction-state-update-request.dto';
 import { LoggingUtil } from '../common/logging.util';
@@ -18,23 +18,20 @@ export class ChatInternalController {
 
   constructor(
     private readonly chatNotificationService: ChatNotificationService,
+    private readonly configService: ConfigService,
   ) {
-    const internalSecret = process.env.INTERNAL_API_SECRET;
-    if (!internalSecret) {
-      throw new InternalServerErrorException(
-        'INTERNAL_API_SECRET이 설정되지 않았습니다.',
-      );
-    }
-    this.internalSecret = internalSecret;
+    this.internalSecret = this.configService.getOrThrow<string>(
+      'INTERNAL_API_SECRET',
+    );
   }
 
   @Post('transaction-state')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   publishTransactionStateChanged(
-    @Headers('x-internal-secret') internalSecret: string | undefined,
+    @Headers('x-internal-secret') receivedSecret: string | undefined,
     @Body() payload: TransactionStateUpdateRequestDto,
   ): { ok: true } {
-    if (internalSecret !== this.internalSecret) {
+    if (receivedSecret !== this.internalSecret) {
       LoggingUtil.error(
         'ChatInternalController',
         `내부 API 인증 실패: roomId=${payload.roomId}, productId=${payload.productId}`,

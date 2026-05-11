@@ -1,23 +1,25 @@
 import { UnauthorizedException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ChatInternalController } from './chat-internal.controller';
 import { ChatNotificationService } from './chat-notification.service';
 
 describe('ChatInternalController', () => {
-  const originalSecret = process.env.INTERNAL_API_SECRET;
   let controller: ChatInternalController;
   let chatNotificationService: jest.Mocked<ChatNotificationService>;
+  let configService: jest.Mocked<ConfigService>;
 
   beforeEach(() => {
-    process.env.INTERNAL_API_SECRET = 'test-secret';
     chatNotificationService = {
       broadcastTransactionStateChanged: jest.fn(),
       setServer: jest.fn(),
     } as unknown as jest.Mocked<ChatNotificationService>;
-    controller = new ChatInternalController(chatNotificationService);
-  });
-
-  afterAll(() => {
-    process.env.INTERNAL_API_SECRET = originalSecret;
+    configService = {
+      getOrThrow: jest.fn().mockReturnValue('test-secret'),
+    } as unknown as jest.Mocked<ConfigService>;
+    controller = new ChatInternalController(
+      chatNotificationService,
+      configService,
+    );
   });
 
   it('시크릿이 맞으면 거래 상태 이벤트를 발행한다', () => {
