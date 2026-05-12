@@ -4,7 +4,7 @@ import { io, Socket } from 'socket.io-client';
 import * as jwt from 'jsonwebtoken';
 import Redis from 'ioredis';
 import { GenericContainer, StartedTestContainer } from 'testcontainers';
-import request from 'supertest';
+import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 
 const JWT_SECRET = 'test-secret';
