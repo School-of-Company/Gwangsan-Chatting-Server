@@ -25,6 +25,7 @@ describe('ChatInternalController', () => {
   it('시크릿이 맞으면 거래 상태 이벤트를 발행한다', () => {
     const payload = {
       roomId: 1,
+      targetMemberId: 9,
       productId: 2,
       isCompleted: true,
       createdAt: '2026-05-11T00:00:00.000Z',
@@ -44,6 +45,7 @@ describe('ChatInternalController', () => {
     expect(() =>
       controller.publishTransactionStateChanged('wrong-secret', {
         roomId: 1,
+        targetMemberId: 9,
         productId: 2,
         isCompleted: true,
         createdAt: '2026-05-11T00:00:00.000Z',

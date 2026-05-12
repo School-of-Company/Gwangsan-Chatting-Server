@@ -4,6 +4,7 @@ import { LoggingUtil } from '../common/logging.util';
 
 export interface TransactionStateChangedPayload {
   roomId: number;
+  targetMemberId?: number;
   productId: number;
   isCompleted: boolean;
   createdAt: string;
@@ -28,13 +29,15 @@ export class ChatNotificationService {
       return;
     }
 
-    this.server
-      .in(`roomId=${payload.roomId}`)
-      .emit('transactionStateChanged', payload);
+    const targetRoom = payload.targetMemberId
+      ? `memberId=${payload.targetMemberId}`
+      : `roomId=${payload.roomId}`;
+
+    this.server.in(targetRoom).emit('transactionStateChanged', payload);
 
     LoggingUtil.log(
       'ChatNotificationService',
-      `거래 상태 이벤트 발행: roomId=${payload.roomId}, productId=${payload.productId}, isCompleted=${payload.isCompleted}`,
+      `거래 상태 이벤트 발행: targetRoom=${targetRoom}, roomId=${payload.roomId}, productId=${payload.productId}, isCompleted=${payload.isCompleted}`,
     );
   }
 }

@@ -60,9 +60,13 @@ export class ChatGateway
   }
 
   handleConnection(client: Socket): void {
+    const memberId = (client.data as ClientData).memberId;
+    if (memberId !== undefined && memberId !== null) {
+      void client.join(`memberId=${memberId}`);
+    }
     LoggingUtil.log(
       'ChatGateway',
-      `클라이언트 연결 성공: ${client.id}, memberId=${(client.data as ClientData).memberId}`,
+      `클라이언트 연결 성공: ${client.id}, memberId=${memberId}`,
     );
   }
 
