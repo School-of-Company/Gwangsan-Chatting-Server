@@ -4,9 +4,11 @@ import { io, Socket } from 'socket.io-client';
 import * as jwt from 'jsonwebtoken';
 import Redis from 'ioredis';
 import { GenericContainer, StartedTestContainer } from 'testcontainers';
+import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 
 const JWT_SECRET = 'test-secret';
+const INTERNAL_API_SECRET = 'internal-test-secret';
 
 describe('Chat Stream E2E', () => {
   let app: INestApplication;
@@ -25,6 +27,7 @@ describe('Chat Stream E2E', () => {
 
     process.env.JWT_ACCESS_SECRET = JWT_SECRET;
     process.env.SPRING_SERVER_URL = 'http://localhost:8080';
+    process.env.INTERNAL_API_SECRET = INTERNAL_API_SECRET;
     process.env.REDIS_HOST = redisHost;
     process.env.REDIS_PORT = String(redisPort);
 
@@ -274,6 +277,98 @@ describe('Chat Stream E2E', () => {
       });
 
       expect(notReceived).toBe(false);
+    });
+  });
+
+  describe('transaction-state internal event', () => {
+    const roomId = 77;
+    const targetMemberId = 4;
+    const otherMemberId = 5;
+    const targetPhoneNumber = 'test-phone-003';
+    const otherPhoneNumber = 'test-phone-004';
+    let targetSocket: Socket;
+    let otherSocket: Socket;
+
+    beforeAll(async () => {
+      await seedAuthCache(
+        targetPhoneNumber,
+        targetMemberId,
+        'transaction-listener',
+      );
+      await seedAuthCache(otherPhoneNumber, otherMemberId, 'other-listener');
+      targetSocket = await connect(getPort(), makeToken(targetPhoneNumber));
+      otherSocket = await connect(getPort(), makeToken(otherPhoneNumber));
+      targetSocket.emit('joinRoom', roomId);
+      otherSocket.emit('joinRoom', roomId);
+      await new Promise((r) => setTimeout(r, 100));
+    });
+
+    afterAll(async () => {
+      targetSocket.disconnect();
+      otherSocket.disconnect();
+      await redis.del(`auth:cache:${targetPhoneNumber}`);
+      await redis.del(`auth:cache:${otherPhoneNumber}`);
+    });
+
+    it('내부 API 호출 시 대상 memberId에 transactionStateChanged 이벤트를 보낸다', async () => {
+      const createdAt = new Date().toISOString();
+      const targetEventPromise = new Promise<Record<string, unknown>>(
+        (resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('transactionStateChanged timeout')),
+            5000,
+          );
+          targetSocket.once(
+            'transactionStateChanged',
+            (data: Record<string, unknown>) => {
+              clearTimeout(timer);
+              resolve(data);
+            },
+          );
+        },
+      );
+      const otherEventPromise = new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), 1000);
+        otherSocket.once('transactionStateChanged', () => {
+          clearTimeout(timer);
+          resolve(true);
+        });
+      });
+
+      await request(app.getHttpServer())
+        .post('/api/internal/chat/transaction-state')
+        .set('x-internal-secret', INTERNAL_API_SECRET)
+        .send({
+          roomId,
+          targetMemberId,
+          productId: 123,
+          isCompleted: true,
+          createdAt,
+        })
+        .expect(201, { ok: true });
+
+      await expect(targetEventPromise).resolves.toMatchObject({
+        roomId,
+        targetMemberId,
+        productId: 123,
+        isCompleted: true,
+        createdAt,
+      });
+      await expect(otherEventPromise).resolves.toBe(false);
+    });
+
+    it('내부 시크릿이 다르면 401을 반환한다', async () => {
+      await request(app.getHttpServer())
+        .post('/api/internal/chat/transaction-state')
+        .set('x-internal-secret', 'wrong-secret')
+        .send({
+          roomId,
+          targetMemberId,
+          productId: 123,
+          isCompleted: true,
+          createdAt: new Date().toISOString(),
+        })
+        .expect(401);
     });
   });
 });
