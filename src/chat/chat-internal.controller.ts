@@ -8,6 +8,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { timingSafeEqual } from 'crypto';
 import { ChatNotificationService } from './chat-notification.service';
 import { TransactionStateUpdateRequestDto } from './dto/transaction-state-update-request.dto';
 import { LoggingUtil } from '../common/logging.util';
@@ -31,7 +32,7 @@ export class ChatInternalController {
     @Headers('x-internal-secret') receivedSecret: string | undefined,
     @Body() payload: TransactionStateUpdateRequestDto,
   ): { ok: true } {
-    if (receivedSecret !== this.internalSecret) {
+    if (!this.isValidInternalSecret(receivedSecret)) {
       LoggingUtil.error(
         'ChatInternalController',
         `내부 API 인증 실패: roomId=${payload.roomId}, productId=${payload.productId}`,
@@ -41,5 +42,20 @@ export class ChatInternalController {
 
     this.chatNotificationService.broadcastTransactionStateChanged(payload);
     return { ok: true };
+  }
+
+  private isValidInternalSecret(receivedSecret: string | undefined): boolean {
+    if (!receivedSecret) {
+      return false;
+    }
+
+    const receivedBuffer = Buffer.from(receivedSecret);
+    const expectedBuffer = Buffer.from(this.internalSecret);
+
+    if (receivedBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(receivedBuffer, expectedBuffer);
   }
 }
