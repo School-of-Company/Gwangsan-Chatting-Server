@@ -23,6 +23,10 @@ export class TransactionStateUpdateRequestDto {
   @IsBoolean()
   isCompleted: boolean;
 
+  @IsOptional()
+  @IsBoolean()
+  isReserved?: boolean;
+
   @IsDateString()
   createdAt: string;
 }
