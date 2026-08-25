@@ -1,10 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
+import { AuthService } from '../auth/auth.service';
+import { ChatNotificationService } from './chat-notification.service';
 
 const mockChatService = {
-  validateToken: jest.fn(),
   sendMessage: jest.fn(),
+};
+
+const mockAuthService = {
+  validateToken: jest.fn(),
+};
+
+const mockChatNotificationService = {
+  setServer: jest.fn(),
 };
 
 describe('ChatGateway', () => {
@@ -17,6 +26,14 @@ describe('ChatGateway', () => {
         {
           provide: ChatService,
           useValue: mockChatService,
+        },
+        {
+          provide: AuthService,
+          useValue: mockAuthService,
+        },
+        {
+          provide: ChatNotificationService,
+          useValue: mockChatNotificationService,
         },
       ],
     }).compile();

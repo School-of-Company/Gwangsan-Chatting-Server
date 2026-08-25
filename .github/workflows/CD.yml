@@ -1,0 +1,72 @@
+name: CI/CD
+
+on:
+  push:
+    branches: ["develop"]
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: gwangsan-chat
+  DISCORD_WEBHOOK_URL: https://discord.com/api/webhooks/1387943644601913365/sYVG9ylcYE6yFucoThqvz1l0pgwZylBfsGZhNU7NmCvStq4fB-GZ037bEDxCOSbfhMuH
+
+jobs:
+  ci-cd:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_ID }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker image and push to ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker tag $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Zip codedeploy bundle
+        run: |
+          zip -r deploy.zip appspec.yml scripts/
+
+      - name: Upload to S3
+        run: |
+          aws s3 cp deploy.zip s3://gwangsan-githubaction/codedeploy/gwangsan-chat-deploy.zip
+
+      - name: Deploy via CodeDeploy
+        run: |
+          aws deploy create-deployment \
+            --application-name gwangsan-app \
+            --deployment-group-name gwangsan-chat-deployment-group \
+            --s3-location bucket=gwangsan-githubaction,key=codedeploy/gwangsan-chat-deploy.zip,bundleType=zip \
+            --region ${{ env.AWS_REGION }}
+
+      - name: ✅ Discord Notification - 배포 성공
+        if: success()
+        run: |
+          curl -H "Content-Type: application/json" \
+               -X POST \
+               -d '{"content": "✅ [gwangsan-chat] ECR push and CodeDeploy deployment succeeded!"}' \
+               ${{ env.DISCORD_WEBHOOK_URL }}
+
+      - name: ❌ Discord Notification - 배포 실패
+        if: failure()
+        run: |
+          curl -H "Content-Type: application/json" \
+               -X POST \
+               -d '{"content": "❌ [gwangsan-chat] ECR push or CodeDeploy deployment failed."}' \
+               ${{ env.DISCORD_WEBHOOK_URL }}
