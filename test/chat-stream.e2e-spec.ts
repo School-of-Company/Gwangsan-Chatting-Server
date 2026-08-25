@@ -357,6 +357,47 @@ describe('Chat Stream E2E', () => {
       await expect(otherEventPromise).resolves.toBe(false);
     });
 
+    it('isReserved가 포함되면 whitelist에 걸리지 않고 이벤트에 실려간다', async () => {
+      const createdAt = new Date().toISOString();
+      const targetEventPromise = new Promise<Record<string, unknown>>(
+        (resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('transactionStateChanged timeout')),
+            5000,
+          );
+          targetSocket.once(
+            'transactionStateChanged',
+            (data: Record<string, unknown>) => {
+              clearTimeout(timer);
+              resolve(data);
+            },
+          );
+        },
+      );
+
+      await request(app.getHttpServer())
+        .post('/api/internal/chat/transaction-state')
+        .set('x-internal-secret', INTERNAL_API_SECRET)
+        .send({
+          roomId,
+          targetMemberId,
+          productId: 123,
+          isCompleted: false,
+          isReserved: true,
+          createdAt,
+        })
+        .expect(201, { ok: true });
+
+      await expect(targetEventPromise).resolves.toMatchObject({
+        roomId,
+        targetMemberId,
+        productId: 123,
+        isCompleted: false,
+        isReserved: true,
+        createdAt,
+      });
+    });
+
     it('내부 시크릿이 다르면 401을 반환한다', async () => {
       await request(app.getHttpServer())
         .post('/api/internal/chat/transaction-state')
