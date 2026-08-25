@@ -4,16 +4,25 @@ import {
   OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
+import { Agent as HttpAgent } from 'http';
+import { Agent as HttpsAgent } from 'https';
 import * as jwt from 'jsonwebtoken';
 import { MemberInfo } from '../chat/dto/chat-member-info.dto';
 import { LoggingUtil } from '../common/logging.util';
 import { RedisService } from '../redis/redis.service';
 
+const SPRING_REQUEST_TIMEOUT_MS = 5000;
+
 @Injectable()
 export class AuthService implements OnModuleInit {
   private jwtSecret: string;
   private springUrl: string;
+  private readonly httpClient: AxiosInstance = axios.create({
+    timeout: SPRING_REQUEST_TIMEOUT_MS,
+    httpAgent: new HttpAgent({ keepAlive: true }),
+    httpsAgent: new HttpsAgent({ keepAlive: true }),
+  });
 
   constructor(private readonly redisService: RedisService) {}
 
@@ -79,7 +88,7 @@ export class AuthService implements OnModuleInit {
     }
 
     try {
-      const response = await axios.get(`${this.springUrl}/api/auth`, {
+      const response = await this.httpClient.get(`${this.springUrl}/api/auth`, {
         headers: { Authorization: token },
       });
 
