@@ -21,6 +21,7 @@ import { ChatNotificationService } from './chat-notification.service';
 interface ClientData {
   memberId: number;
   nickname: string;
+  token: string;
 }
 
 @UsePipes(new ValidationPipe({ transform: true }))
@@ -50,6 +51,7 @@ export class ChatGateway
         .then((memberInfo) => {
           (socket.data as ClientData).memberId = memberInfo.memberId;
           (socket.data as ClientData).nickname = memberInfo.nickname;
+          (socket.data as ClientData).token = token;
           next();
         })
         .catch((error: unknown) => {
@@ -60,7 +62,7 @@ export class ChatGateway
   }
 
   handleConnection(client: Socket): void {
-    const memberId = (client.data as ClientData).memberId;
+    const { memberId, token } = client.data as ClientData;
     if (memberId !== undefined && memberId !== null) {
       void client.join(`memberId=${memberId}`);
     }
@@ -68,6 +70,40 @@ export class ChatGateway
       'ChatGateway',
       `클라이언트 연결 성공: ${client.id}, memberId=${memberId}`,
     );
+    void this.joinMyRooms(client, token);
+  }
+
+  /**
+   * 참여 중인 모든 방에 자동 join 한다.
+   *
+   * 메시지와 방 목록 갱신은 `roomId=` 룸으로만 발행되므로, 채팅방 화면에 들어가지
+   * 않은 사용자도 받으려면 연결 시점에 join 되어 있어야 한다. 재연결 이후 복구도
+   * 이 경로로 이루어진다. 클라이언트의 `joinRoom` 은 새로 만든 방을 위해 그대로 둔다.
+   */
+  private async joinMyRooms(client: Socket, token: string): Promise<void> {
+    if (!token) {
+      return;
+    }
+    try {
+      const roomIds = await this.chatService.fetchJoinedRoomIds(token);
+      if (!client.connected) {
+        return;
+      }
+      for (const roomId of roomIds) {
+        void client.join(`roomId=${roomId}`);
+      }
+      LoggingUtil.log(
+        'ChatGateway',
+        `참여 방 자동 join: clientId=${client.id}, count=${roomIds.length}`,
+      );
+    } catch (error) {
+      // 조회 실패해도 연결은 유지한다. 클라이언트가 joinRoom 을 보내면 종전대로 동작한다.
+      LoggingUtil.error(
+        'ChatGateway',
+        `참여 방 자동 join 실패: clientId=${client.id}`,
+        error,
+      );
+    }
   }
 
   handleDisconnect(client: Socket) {
