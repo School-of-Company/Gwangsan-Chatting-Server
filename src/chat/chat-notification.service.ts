@@ -30,9 +30,9 @@ export class ChatNotificationService {
       return;
     }
 
-    const targetRoom = payload.targetMemberId
-      ? `memberId=${payload.targetMemberId}`
-      : `roomId=${payload.roomId}`;
+    // 거래 상태는 방 단위 상태이므로 참여자 양쪽 모두에게 보낸다.
+    // targetMemberId 로 한쪽만 고르면 행위자 본인 또는 상대 중 한쪽 화면이 갱신되지 않는다.
+    const targetRoom = `roomId=${payload.roomId}`;
 
     this.server.in(targetRoom).emit('transactionStateChanged', payload);
 

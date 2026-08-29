@@ -7,7 +7,7 @@ describe('ChatNotificationService', () => {
     service = new ChatNotificationService();
   });
 
-  it('targetMemberId 룸에 transactionStateChanged 이벤트를 발행한다', () => {
+  it('targetMemberId가 있어도 방 전체에 transactionStateChanged 이벤트를 발행한다', () => {
     const emit = jest.fn();
     const inFn = jest.fn().mockReturnValue({ emit });
     const server = { in: inFn } as unknown as Parameters<
@@ -23,7 +23,8 @@ describe('ChatNotificationService', () => {
       createdAt: '2026-05-11T00:00:00.000Z',
     });
 
-    expect(inFn).toHaveBeenCalledWith('memberId=11');
+    expect(inFn).toHaveBeenCalledWith('roomId=7');
+    expect(inFn).not.toHaveBeenCalledWith('memberId=11');
     expect(emit).toHaveBeenCalledWith('transactionStateChanged', {
       roomId: 7,
       targetMemberId: 11,

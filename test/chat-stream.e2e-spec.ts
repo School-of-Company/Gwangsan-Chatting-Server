@@ -310,7 +310,7 @@ describe('Chat Stream E2E', () => {
       await redis.del(`auth:cache:${otherPhoneNumber}`);
     });
 
-    it('내부 API 호출 시 대상 memberId에 transactionStateChanged 이벤트를 보낸다', async () => {
+    it('내부 API 호출 시 방 참여자 양쪽 모두에게 transactionStateChanged 이벤트를 보낸다', async () => {
       const createdAt = new Date().toISOString();
       const targetEventPromise = new Promise<Record<string, unknown>>(
         (resolve, reject) => {
@@ -327,13 +327,21 @@ describe('Chat Stream E2E', () => {
           );
         },
       );
-      const otherEventPromise = new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), 1000);
-        otherSocket.once('transactionStateChanged', () => {
-          clearTimeout(timer);
-          resolve(true);
-        });
-      });
+      const otherEventPromise = new Promise<Record<string, unknown>>(
+        (resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('상대방 transactionStateChanged timeout')),
+            5000,
+          );
+          otherSocket.once(
+            'transactionStateChanged',
+            (data: Record<string, unknown>) => {
+              clearTimeout(timer);
+              resolve(data);
+            },
+          );
+        },
+      );
 
       await request(app.getHttpServer())
         .post('/api/internal/chat/transaction-state')
@@ -347,14 +355,16 @@ describe('Chat Stream E2E', () => {
         })
         .expect(201, { ok: true });
 
-      await expect(targetEventPromise).resolves.toMatchObject({
+      const expected = {
         roomId,
         targetMemberId,
         productId: 123,
         isCompleted: true,
         createdAt,
-      });
-      await expect(otherEventPromise).resolves.toBe(false);
+      };
+      // 거래 상태는 방 단위 상태이므로 targetMemberId 가 지정돼도 양쪽 다 받아야 한다.
+      await expect(targetEventPromise).resolves.toMatchObject(expected);
+      await expect(otherEventPromise).resolves.toMatchObject(expected);
     });
 
     it('isReserved가 포함되면 whitelist에 걸리지 않고 이벤트에 실려간다', async () => {
