@@ -408,6 +408,90 @@ describe('Chat Stream E2E', () => {
       });
     });
 
+    it('requestedBySeller가 whitelist에 걸리지 않고 이벤트에 실려간다', async () => {
+      const createdAt = new Date().toISOString();
+      const eventPromise = new Promise<Record<string, unknown>>(
+        (resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('transactionStateChanged timeout')),
+            5000,
+          );
+          targetSocket.once(
+            'transactionStateChanged',
+            (data: Record<string, unknown>) => {
+              clearTimeout(timer);
+              resolve(data);
+            },
+          );
+        },
+      );
+
+      await request(app.getHttpServer())
+        .post('/api/internal/chat/transaction-state')
+        .set('x-internal-secret', INTERNAL_API_SECRET)
+        .send({
+          roomId,
+          productId: 123,
+          isCompleted: false,
+          isReserved: false,
+          createdAt,
+          requestedBySeller: true,
+        })
+        .expect(201, { ok: true });
+
+      await expect(eventPromise).resolves.toMatchObject({
+        roomId,
+        productId: 123,
+        isCompleted: false,
+        isReserved: false,
+        createdAt,
+        requestedBySeller: true,
+      });
+    });
+
+    // 거래 확정/롤백 후에는 활성 거래 요청이 없어 Spring 이 null 을 보낸다.
+    // createdAt 이 필수 검증이면 이 요청이 400 으로 반려된다.
+    it('활성 거래 요청이 없어 createdAt과 requestedBySeller가 null이어도 통과한다', async () => {
+      const eventPromise = new Promise<Record<string, unknown>>(
+        (resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('transactionStateChanged timeout')),
+            5000,
+          );
+          targetSocket.once(
+            'transactionStateChanged',
+            (data: Record<string, unknown>) => {
+              clearTimeout(timer);
+              resolve(data);
+            },
+          );
+        },
+      );
+
+      await request(app.getHttpServer())
+        .post('/api/internal/chat/transaction-state')
+        .set('x-internal-secret', INTERNAL_API_SECRET)
+        .send({
+          roomId,
+          productId: 123,
+          isCompleted: false,
+          isReserved: false,
+          createdAt: null,
+          requestedBySeller: null,
+        })
+        .expect(201, { ok: true });
+
+      const received = await eventPromise;
+      expect(received).toMatchObject({
+        roomId,
+        productId: 123,
+        isCompleted: false,
+        isReserved: false,
+      });
+      expect(received.createdAt ?? null).toBeNull();
+      expect(received.requestedBySeller ?? null).toBeNull();
+    });
+
     it('내부 시크릿이 다르면 401을 반환한다', async () => {
       await request(app.getHttpServer())
         .post('/api/internal/chat/transaction-state')

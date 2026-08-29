@@ -4,11 +4,15 @@ import { LoggingUtil } from '../common/logging.util';
 
 export interface TransactionStateChangedPayload {
   roomId: number;
+  /** @deprecated 방 단위 상태이므로 수신 대상을 좁히지 않는다. 하위 호환용. */
   targetMemberId?: number;
   productId: number;
   isCompleted: boolean;
   isReserved?: boolean;
-  createdAt: string;
+  /** 거래 요청 생성 시각. 활성 요청이 없으면 null. */
+  createdAt?: string | null;
+  /** 완료 요청을 먼저 한 쪽이 판매자인지. 대기 중인 요청이 없으면 null. */
+  requestedBySeller?: boolean | null;
 }
 
 @Injectable()
