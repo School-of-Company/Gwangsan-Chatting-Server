@@ -47,6 +47,33 @@ describe('ChatGateway', () => {
     expect(gateway).toBeDefined();
   });
 
+  describe('handleLeaveRoom', () => {
+    // 연결 시 자동 join 한 방에서 내보내면 목록 화면에서 실시간 갱신이 끊긴다.
+    it('방에서 내보내지 않는다', () => {
+      const client = {
+        id: 'socket-1',
+        data: { memberId: 9, nickname: '테스터', token: 'Bearer t' },
+        leave: jest.fn(),
+        join: jest.fn(),
+      };
+
+      gateway.handleLeaveRoom(16550, client as never);
+
+      expect(client.leave).not.toHaveBeenCalled();
+    });
+
+    it('유효하지 않은 roomId 는 거부한다', () => {
+      const client = {
+        id: 'socket-1',
+        data: { memberId: 9, nickname: '테스터', token: 'Bearer t' },
+        leave: jest.fn(),
+      };
+
+      expect(() => gateway.handleLeaveRoom(0, client as never)).toThrow();
+      expect(client.leave).not.toHaveBeenCalled();
+    });
+  });
+
   describe('handleConnection', () => {
     const makeClient = () => ({
       id: 'socket-1',
