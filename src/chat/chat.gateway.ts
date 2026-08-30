@@ -127,6 +127,15 @@ export class ChatGateway
     );
   }
 
+  /**
+   * @deprecated 방에서 실제로 내보내지 않는다.
+   *
+   * 연결 시 참여 중인 모든 방에 자동 join 하므로, 소켓은 연결 수명 동안 자신이
+   * 참여한 방에 계속 머물러야 한다. 화면을 벗어났다고 방에서 내보내면 목록 화면에
+   * 있는 동안 새 메시지와 방 목록 갱신을 받지 못한다.
+   *
+   * 클라이언트가 화면 언마운트 시 계속 보내고 있어 핸들러 자체는 남겨 둔다.
+   */
   @SubscribeMessage('leaveRoom')
   handleLeaveRoom(
     @MessageBody() roomId: unknown,
@@ -137,10 +146,9 @@ export class ChatGateway
     if (!Number.isFinite(id) || id < 1) {
       throw new WsException('유효하지 않은 roomId입니다');
     }
-    void client.leave(`roomId=${id}`);
     LoggingUtil.log(
       'ChatGateway',
-      `클라이언트 방 퇴장: clientId=${client.id}, roomId=${id}`,
+      `방 퇴장 요청 무시(자동 join 유지): clientId=${client.id}, roomId=${id}`,
     );
   }
 

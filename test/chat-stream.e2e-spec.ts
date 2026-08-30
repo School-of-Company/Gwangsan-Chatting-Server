@@ -258,25 +258,27 @@ describe('Chat Stream E2E', () => {
       expect(received.isMine).toBe(false);
     });
 
-    it('leaveRoom 후에는 메시지가 전달되지 않는다', async () => {
+    // 연결 시 참여 중인 모든 방에 자동 join 하므로, 화면을 벗어나 leaveRoom 을 보내도
+    // 방에서 내보내지 않는다. 내보내면 목록 화면에 있는 동안 새 메시지를 받지 못한다.
+    it('leaveRoom 을 보내도 참여자는 계속 메시지를 받는다', async () => {
       receiver.emit('leaveRoom', roomId);
       await new Promise((r) => setTimeout(r, 100));
 
-      const notReceived = await new Promise<boolean>((resolve) => {
-        const timer = setTimeout(() => resolve(false), 1000);
+      const received = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => resolve(false), 3000);
         receiver.once('receiveMessage', () => {
           clearTimeout(timer);
           resolve(true);
         });
         sender.emit('sendMessage', {
           roomId,
-          content: '받으면 안 됨',
+          content: 'leaveRoom 후에도 받아야 함',
           imageIds: [],
           messageType: 'TEXT',
         });
       });
 
-      expect(notReceived).toBe(false);
+      expect(received).toBe(true);
     });
   });
 
