@@ -3,6 +3,8 @@ import { ChatGateway } from './chat.gateway';
 import { ChatService } from './chat.service';
 import { AuthService } from '../auth/auth.service';
 import { ChatNotificationService } from './chat-notification.service';
+import { MessageType } from './dto/message-type.enum';
+import { WsException } from '@nestjs/websockets';
 
 const mockChatService = {
   sendMessage: jest.fn(),
@@ -124,6 +126,67 @@ describe('ChatGateway', () => {
       await flush();
 
       expect(client.join).not.toHaveBeenCalledWith('roomId=3');
+    });
+  });
+
+  describe('handleMessage', () => {
+    const makeClient = () => ({
+      id: 'socket-1',
+      data: { memberId: 9, nickname: '테스터', token: 'Bearer t' },
+      emit: jest.fn(),
+      to: jest.fn().mockReturnValue({ emit: jest.fn() }),
+    });
+
+    const makeServer = () => ({
+      in: jest.fn().mockReturnValue({ emit: jest.fn() }),
+    });
+
+    const message = {
+      roomId: 42,
+      content: '안녕',
+      messageType: MessageType.TEXT,
+      imageIds: undefined,
+    };
+
+    it('차단 관계면 브로드캐스트하지 않고 발신자에게만 error 를 보낸다', async () => {
+      mockChatService.sendMessage.mockRejectedValue(
+        new WsException('차단한 사용자입니다.'),
+      );
+      const client = makeClient();
+      const server = makeServer();
+      gateway.server = server as never;
+
+      await gateway.handleMessage(message as never, client as never);
+
+      expect(client.to).not.toHaveBeenCalled();
+      expect(server.in).not.toHaveBeenCalled();
+      expect(client.emit).toHaveBeenCalledTimes(1);
+      expect(client.emit).toHaveBeenCalledWith('error', {
+        message: '차단한 사용자입니다.',
+      });
+    });
+
+    it('정상 전송이면 토큰을 넘기고 방에 브로드캐스트한다', async () => {
+      mockChatService.sendMessage.mockResolvedValue({
+        roomId: 42,
+        content: '안녕',
+        messageType: MessageType.TEXT,
+        createdAt: new Date(),
+      });
+      const client = makeClient();
+      const server = makeServer();
+      gateway.server = server as never;
+
+      await gateway.handleMessage(message as never, client as never);
+
+      expect(mockChatService.sendMessage).toHaveBeenCalledWith(
+        message,
+        9,
+        '테스터',
+        'Bearer t',
+      );
+      expect(client.to).toHaveBeenCalledWith('roomId=42');
+      expect(server.in).toHaveBeenCalledWith('roomId=42');
     });
   });
 });

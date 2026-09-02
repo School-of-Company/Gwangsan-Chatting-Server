@@ -5,6 +5,8 @@ import * as jwt from 'jsonwebtoken';
 import Redis from 'ioredis';
 import { GenericContainer, StartedTestContainer } from 'testcontainers';
 import * as request from 'supertest';
+import * as http from 'http';
+import { AddressInfo } from 'net';
 import { AppModule } from '../src/app.module';
 
 const JWT_SECRET = 'test-secret';
@@ -14,6 +16,9 @@ describe('Chat Stream E2E', () => {
   let app: INestApplication;
   let redis: Redis;
   let redisContainer: StartedTestContainer;
+  let springStub: http.Server;
+  // 차단 시나리오에서만 켠다. 스프링의 sendable 검증 응답을 흉내낸다.
+  let sendableStatus = 200;
 
   beforeAll(async () => {
     jest.setTimeout(60000);
@@ -25,8 +30,28 @@ describe('Chat Stream E2E', () => {
     const redisHost = redisContainer.getHost();
     const redisPort = redisContainer.getMappedPort(6379);
 
+    // 소켓 전송 경로가 스프링의 차단 검증을 거치므로 최소 스텁을 띄운다.
+    springStub = http.createServer((req, res) => {
+      res.setHeader('Connection', 'close');
+      const url = req.url ?? '';
+      if (url.startsWith('/api/chat/rooms')) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('[]');
+        return;
+      }
+      if (/^\/api\/chat\/room\/\d+\/sendable/.test(url)) {
+        res.writeHead(sendableStatus);
+        res.end();
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => springStub.listen(0, resolve));
+    const springPort = (springStub.address() as AddressInfo).port;
+
     process.env.JWT_ACCESS_SECRET = JWT_SECRET;
-    process.env.SPRING_SERVER_URL = 'http://localhost:8080';
+    process.env.SPRING_SERVER_URL = `http://localhost:${springPort}`;
     process.env.INTERNAL_API_SECRET = INTERNAL_API_SECRET;
     process.env.REDIS_HOST = redisHost;
     process.env.REDIS_PORT = String(redisPort);
@@ -44,6 +69,7 @@ describe('Chat Stream E2E', () => {
   afterAll(async () => {
     await redis?.quit();
     await app?.close();
+    await new Promise<void>((resolve) => springStub?.close(() => resolve()));
     await redisContainer?.stop();
   });
 
@@ -138,6 +164,34 @@ describe('Chat Stream E2E', () => {
       expect(received.senderId).toBe(memberId);
       expect(received.senderNickname).toBe(nickname);
       expect(received.isMine).toBe(true);
+    });
+
+    it('차단 관계면 error 를 보내고 스트림에 발행하지 않는다', async () => {
+      const before = await redis.xlen(streamKey);
+      sendableStatus = 403;
+
+      const error = await new Promise<Record<string, unknown>>(
+        (resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('error timeout')),
+            5000,
+          );
+          socket.once('error', (data: Record<string, unknown>) => {
+            clearTimeout(timer);
+            resolve(data);
+          });
+          socket.emit('sendMessage', {
+            roomId,
+            content: '차단됐어야 한다',
+            imageIds: [],
+            messageType: 'TEXT',
+          });
+        },
+      );
+      sendableStatus = 200;
+
+      expect(error.message).toBe('차단한 사용자입니다.');
+      expect(await redis.xlen(streamKey)).toBe(before);
     });
 
     it('Redis Stream에 메시지를 발행한다', async () => {
