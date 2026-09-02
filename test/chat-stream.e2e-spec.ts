@@ -32,6 +32,7 @@ describe('Chat Stream E2E', () => {
 
     // 소켓 전송 경로가 스프링의 차단 검증을 거치므로 최소 스텁을 띄운다.
     springStub = http.createServer((req, res) => {
+      res.setHeader('Connection', 'close');
       const url = req.url ?? '';
       if (url.startsWith('/api/chat/rooms')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
