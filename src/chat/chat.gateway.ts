@@ -174,11 +174,12 @@ export class ChatGateway
       `메시지 수신: clientId=${client.id}, roomId=${message.roomId}`,
     );
     try {
-      const { memberId, nickname } = client.data as ClientData;
+      const { memberId, nickname, token } = client.data as ClientData;
       const response = await this.chatService.sendMessage(
         message,
         memberId,
         nickname,
+        token,
       );
 
       const roomKey = `roomId=${message.roomId}`;
