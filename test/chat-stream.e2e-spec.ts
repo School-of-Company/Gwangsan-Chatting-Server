@@ -17,8 +17,10 @@ describe('Chat Stream E2E', () => {
   let redis: Redis;
   let redisContainer: StartedTestContainer;
   let springStub: http.Server;
-  // 차단 시나리오에서만 켠다. 스프링의 sendable 검증 응답을 흉내낸다.
   let sendableStatus = 200;
+  let imageResponse: unknown;
+  let requestedImageIds: string[] = [];
+  let sendableAuthorization: string | undefined;
 
   beforeAll(async () => {
     jest.setTimeout(60000);
@@ -40,8 +42,15 @@ describe('Chat Stream E2E', () => {
         return;
       }
       if (/^\/api\/chat\/room\/\d+\/sendable/.test(url)) {
-        res.writeHead(sendableStatus);
-        res.end();
+        requestedImageIds = new URL(
+          url,
+          'http://localhost',
+        ).searchParams.getAll('imageIds');
+        sendableAuthorization = req.headers.authorization;
+        res.writeHead(sendableStatus, { 'Content-Type': 'application/json' });
+        res.end(
+          requestedImageIds.length ? JSON.stringify(imageResponse) : undefined,
+        );
         return;
       }
       res.writeHead(404);
@@ -164,6 +173,7 @@ describe('Chat Stream E2E', () => {
       expect(received.senderId).toBe(memberId);
       expect(received.senderNickname).toBe(nickname);
       expect(received.isMine).toBe(true);
+      expect(received.images).toBeNull();
     });
 
     it('차단 관계면 error 를 보내고 스트림에 발행하지 않는다', async () => {
@@ -268,7 +278,7 @@ describe('Chat Stream E2E', () => {
       await seedAuthCache('receiver-phone', 3, 'receiver');
 
       const port = getPort();
-      sender = await connect(port, makeToken(phoneNumber));
+      sender = await connect(port, `Bearer ${makeToken(phoneNumber)}`);
       receiver = await connect(port, makeToken('receiver-phone'));
 
       await new Promise((r) => setTimeout(r, 300));
@@ -311,6 +321,134 @@ describe('Chat Stream E2E', () => {
       expect(received.content).toBe('브로드캐스트 테스트');
       expect(received.isMine).toBe(false);
     });
+
+    function nextEvent(
+      client: Socket,
+      event: string,
+    ): Promise<Record<string, unknown>> {
+      return new Promise((resolve, reject) => {
+        const listener = (payload: Record<string, unknown>) => {
+          clearTimeout(timer);
+          resolve(payload);
+        };
+        const timer = setTimeout(() => {
+          client.off(event, listener);
+          reject(new Error(`${event} timeout`));
+        }, 7000);
+        client.once(event, listener);
+      });
+    }
+
+    afterEach(() => {
+      sendableStatus = 200;
+      imageResponse = undefined;
+    });
+
+    it.each([null, ''])(
+      '캡션 %p IMAGE의 실제 메타데이터를 양쪽에 전송한다',
+      async (content) => {
+        const images = [
+          { imageId: 12, imageUrl: 'https://images.example/12.jpg' },
+          { imageId: 11, imageUrl: 'https://images.example/11.jpg' },
+          { imageId: 12, imageUrl: 'https://images.example/12.jpg' },
+        ];
+        imageResponse = { images };
+        const ownEvent = nextEvent(sender, 'receiveMessage');
+        const otherEvent = nextEvent(receiver, 'receiveMessage');
+        const before = await redis.xlen(`chat:room:${roomId}:messages`);
+
+        sender.emit('sendMessage', {
+          roomId,
+          content,
+          imageIds: [12, 11, 12],
+          messageType: 'IMAGE',
+        });
+
+        const [own, other] = await Promise.all([ownEvent, otherEvent]);
+        expect(own).toMatchObject({
+          roomId,
+          images,
+          isMine: true,
+          messageType: 'IMAGE',
+        });
+        expect(other).toEqual({ ...own, isMine: false });
+        expect(requestedImageIds).toEqual(['12', '11', '12']);
+        expect(sendableAuthorization).toMatch(/^Bearer /);
+        expect(
+          jwt.verify(sendableAuthorization?.slice(7) ?? '', JWT_SECRET),
+        ).toMatchObject({ sub: phoneNumber });
+        expect(await redis.xlen(`chat:room:${roomId}:messages`)).toBe(
+          before + 1,
+        );
+        const entries = await redis.xrevrange(
+          `chat:room:${roomId}:messages`,
+          '+',
+          '-',
+          'COUNT',
+          1,
+        );
+        const fields: Record<string, string> = {};
+        for (let i = 0; i < entries[0][1].length; i += 2) {
+          fields[entries[0][1][i]] = entries[0][1][i + 1];
+        }
+        expect(JSON.parse(fields.imageIds)).toEqual([12, 11, 12]);
+        expect(fields.messageType).toBe('IMAGE');
+      },
+    );
+
+    it.each([
+      [404, undefined],
+      [403, undefined],
+      [500, undefined],
+      [200, undefined],
+      [200, { images: [] }],
+      [200, { images: [{ imageId: 11, imageUrl: '' }] }],
+    ])(
+      '메타데이터 응답 %p / %p 실패 시 발행과 성공 이벤트가 없다',
+      async (status, body) => {
+        sendableStatus = status;
+        imageResponse = body;
+        const before = await redis.xlen(`chat:room:${roomId}:messages`);
+        const successes: unknown[] = [];
+        const recordSuccess = (value: unknown) => successes.push(value);
+        sender.on('receiveMessage', recordSuccess);
+        receiver.on('receiveMessage', recordSuccess);
+        sender.on('updateRoomList', recordSuccess);
+        receiver.on('updateRoomList', recordSuccess);
+        try {
+          const error = nextEvent(sender, 'error');
+          sender.emit('sendMessage', {
+            roomId,
+            content: null,
+            imageIds: [11],
+            messageType: 'IMAGE',
+          });
+          expect(await error).toHaveProperty('message');
+          expect(await redis.xlen(`chat:room:${roomId}:messages`)).toBe(before);
+          expect(successes).toEqual([]);
+        } finally {
+          sender.off('receiveMessage', recordSuccess);
+          receiver.off('receiveMessage', recordSuccess);
+          sender.off('updateRoomList', recordSuccess);
+          receiver.off('updateRoomList', recordSuccess);
+        }
+      },
+    );
+
+    it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1])(
+      '유효하지 않은 이미지 ID %p는 발행되지 않는다',
+      async (imageId) => {
+        const before = await redis.xlen(`chat:room:${roomId}:messages`);
+        const error = nextEvent(sender, 'exception');
+        sender.emit('sendMessage', {
+          roomId,
+          imageIds: [imageId],
+          messageType: 'IMAGE',
+        });
+        await error;
+        expect(await redis.xlen(`chat:room:${roomId}:messages`)).toBe(before);
+      },
+    );
 
     // 연결 시 참여 중인 모든 방에 자동 join 하므로, 화면을 벗어나 leaveRoom 을 보내도
     // 방에서 내보내지 않는다. 내보내면 목록 화면에 있는 동안 새 메시지를 받지 못한다.

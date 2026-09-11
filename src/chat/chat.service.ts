@@ -9,6 +9,8 @@ import { LoggingUtil } from '../common/logging.util';
 import { RedisStreamPublisher } from '../redis/redis-stream.publisher';
 import { ChatStreamMessageDto } from '../redis/dto/chat-stream-message.dto';
 import { generateSnowflakeId } from '../common/snowflake.util';
+import { ChatImageResponse } from './dto/chat-image-response.dto';
+import { MessageType } from './dto/message-type.enum';
 
 const SPRING_REQUEST_TIMEOUT_MS = 5000;
 
@@ -67,17 +69,24 @@ export class ChatService {
    * ponytail: 메시지 1건당 내부 호출 1회. 부담되면 AuthService 처럼 Redis 캐시를
    * 두되, 차단 해제가 즉시 반영되도록 TTL 을 짧게 잡아야 한다.
    */
-  private async assertSendable(roomId: number, token: string): Promise<void> {
+  private async assertSendable(
+    roomId: number,
+    token: string,
+    imageIds?: number[],
+  ): Promise<ChatImageResponse[] | null> {
     const springUrl = process.env.SPRING_SERVER_URL;
     if (!springUrl) {
       throw new Error('SPRING_SERVER_URL이 설정되지 않았습니다.');
     }
 
     try {
-      await this.httpClient.get(
+      const params = new URLSearchParams();
+      for (const id of imageIds ?? []) params.append('imageIds', String(id));
+      const response = await this.httpClient.get<unknown>(
         `${springUrl}/api/chat/room/${roomId}/sendable`,
-        { headers: { Authorization: token } },
+        { headers: { Authorization: token }, params },
       );
+      return imageIds ? this.parseImages(response.data, imageIds) : null;
     } catch (error) {
       const status = axios.isAxiosError(error)
         ? error.response?.status
@@ -93,10 +102,62 @@ export class ChatService {
         throw new WsException('차단한 사용자입니다.');
       }
       if (status === 404) {
-        throw new WsException('채팅방을 찾을 수 없습니다.');
+        throw new WsException(
+          imageIds
+            ? '채팅방 또는 이미지를 확인할 수 없습니다.'
+            : '채팅방을 찾을 수 없습니다.',
+        );
       }
       throw new WsException('메시지를 전송할 수 없습니다.');
     }
+  }
+
+  private parseImages(data: unknown, imageIds: number[]): ChatImageResponse[] {
+    if (
+      !data ||
+      typeof data !== 'object' ||
+      !('images' in data) ||
+      !Array.isArray(data.images) ||
+      data.images.length !== imageIds.length
+    ) {
+      throw new WsException('이미지 정보를 확인할 수 없습니다.');
+    }
+
+    const remaining = new Map<number, number>();
+    for (const id of imageIds) remaining.set(id, (remaining.get(id) ?? 0) + 1);
+    const urls = new Map<number, string>();
+    const rawImages: unknown[] = data.images;
+    for (const image of rawImages) {
+      if (
+        !image ||
+        typeof image !== 'object' ||
+        !('imageId' in image) ||
+        !('imageUrl' in image) ||
+        typeof image.imageId !== 'number' ||
+        !Number.isSafeInteger(image.imageId) ||
+        image.imageId < 1 ||
+        typeof image.imageUrl !== 'string' ||
+        !image.imageUrl.trim()
+      ) {
+        throw new WsException('이미지 정보를 확인할 수 없습니다.');
+      }
+      const count = remaining.get(image.imageId) ?? 0;
+      const previousUrl = urls.get(image.imageId);
+      if (
+        count === 0 ||
+        (previousUrl !== undefined && previousUrl !== image.imageUrl)
+      ) {
+        throw new WsException('이미지 정보를 확인할 수 없습니다.');
+      }
+      remaining.set(image.imageId, count - 1);
+      urls.set(image.imageId, image.imageUrl);
+    }
+    return imageIds.map((id) => {
+      const url = urls.get(id);
+      if (url === undefined)
+        throw new WsException('이미지 정보를 확인할 수 없습니다.');
+      return new ChatImageResponse(id, url);
+    });
   }
 
   async sendMessage(
@@ -105,11 +166,26 @@ export class ChatService {
     nickname: string,
     token: string,
   ): Promise<ChatMessageResponseDto> {
-    await this.assertSendable(message.roomId, token);
+    const images = await this.assertSendable(
+      message.roomId,
+      token,
+      message.messageType === MessageType.IMAGE ? message.imageIds : undefined,
+    );
 
     const streamKey = `chat:room:${message.roomId}:messages`;
     const messageId = generateSnowflakeId();
     const createdAt = new Date();
+    const response = new ChatMessageResponseDto({
+      messageId,
+      roomId: message.roomId,
+      content: message.content,
+      messageType: message.messageType,
+      createdAt,
+      images,
+      senderNickname: nickname,
+      senderId: memberId,
+      checked: false,
+    });
 
     try {
       const payload = ChatStreamMessageDto.from(
@@ -128,17 +204,7 @@ export class ChatService {
         `메시지 스트림 발행 성공: roomId=${message.roomId}, memberId=${memberId}`,
       );
 
-      return new ChatMessageResponseDto({
-        messageId,
-        roomId: message.roomId,
-        content: message.content,
-        messageType: message.messageType,
-        createdAt,
-        images: null,
-        senderNickname: nickname,
-        senderId: memberId,
-        checked: false,
-      });
+      return response;
     } catch (error) {
       LoggingUtil.error(
         'ChatService',
