@@ -1,10 +1,12 @@
 import {
   IsArray,
   IsEnum,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
   Min,
+  Max,
 } from 'class-validator';
 import { MessageType } from './message-type.enum';
 
@@ -19,7 +21,9 @@ export class ChatMessageRequest {
 
   @IsOptional()
   @IsArray()
-  @IsNumber({}, { each: true })
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  @Max(Number.MAX_SAFE_INTEGER, { each: true })
   imageIds: number[] = [];
 
   @IsEnum(MessageType)
