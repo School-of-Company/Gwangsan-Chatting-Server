@@ -1,6 +1,11 @@
-import { Injectable } from '@nestjs/common';
-import { Server } from 'socket.io';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import type { Namespace, Server } from 'socket.io';
 import { LoggingUtil } from '../common/logging.util';
+import type {
+  MessageDeletedRequestDto,
+  MessageUpdatedRequestDto,
+  SystemMessageRequestDto,
+} from './dto/message-event-request.dto';
 
 export interface TransactionStateChangedPayload {
   roomId: number;
@@ -17,10 +22,70 @@ export interface TransactionStateChangedPayload {
 
 @Injectable()
 export class ChatNotificationService {
-  private server?: Server;
+  private server?: Server | Namespace;
 
-  setServer(server: Server): void {
+  setServer(server: Server | Namespace): void {
     this.server = server;
+  }
+
+  broadcastMessageUpdated(payload: MessageUpdatedRequestDto): void {
+    const { roomId, messageId, content, editedAt } = payload;
+    this.requireServer().in(`roomId=${roomId}`).emit('messageUpdated', {
+      roomId,
+      messageId,
+      content,
+      editedAt,
+    });
+    this.broadcastRoomList(payload);
+  }
+
+  broadcastMessageDeleted(payload: MessageDeletedRequestDto): void {
+    const { roomId, messageId } = payload;
+    this.requireServer()
+      .in(`roomId=${roomId}`)
+      .emit('messageDeleted', { roomId, messageId });
+    this.broadcastRoomList(payload);
+  }
+
+  async broadcastSystemMessage(
+    payload: SystemMessageRequestDto,
+  ): Promise<void> {
+    const sockets = await this.requireServer()
+      .in(`roomId=${payload.roomId}`)
+      .fetchSockets();
+    for (const socket of sockets) {
+      const data: unknown = socket.data;
+      if (!data || typeof data !== 'object' || !('memberId' in data)) continue;
+      // SYSTEM is already saved/read by Spring and excluded from room heads/unread counts.
+      socket.emit('receiveMessage', {
+        ...payload,
+        messageType: 'SYSTEM',
+        images: [],
+        editedAt: null,
+        checked: true,
+        isMine: data.memberId === payload.senderId,
+      });
+    }
+  }
+
+  private broadcastRoomList(payload: MessageDeletedRequestDto): void {
+    if (!payload.roomListChanged) return;
+    const latest = payload.latestMessage;
+    this.requireServer()
+      .in(`roomId=${payload.roomId}`)
+      .emit('updateRoomList', {
+        roomId: payload.roomId,
+        messageId: latest?.messageId ?? null,
+        lastMessage: latest?.content ?? null,
+        lastMessageType: latest?.messageType ?? null,
+        lastMessageTime: latest?.createdAt ?? null,
+      });
+  }
+
+  private requireServer(): Server | Namespace {
+    if (!this.server)
+      throw new ServiceUnavailableException('Socket server is not initialized');
+    return this.server;
   }
 
   broadcastTransactionStateChanged(
