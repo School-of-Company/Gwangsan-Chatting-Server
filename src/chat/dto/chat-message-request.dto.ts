@@ -2,7 +2,6 @@ import {
   IsArray,
   IsEnum,
   IsInt,
-  IsNumber,
   IsOptional,
   IsString,
   Min,
@@ -11,8 +10,9 @@ import {
 import { MessageType } from './message-type.enum';
 
 export class ChatMessageRequest {
-  @IsNumber()
+  @IsInt()
   @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
   roomId: number;
 
   @IsString()

@@ -1,61 +1,78 @@
 import {
   Body,
   Controller,
-  Headers,
   Post,
-  UnauthorizedException,
+  UseGuards,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { timingSafeEqual } from 'crypto';
 import { ChatNotificationService } from './chat-notification.service';
 import { TransactionStateUpdateRequestDto } from './dto/transaction-state-update-request.dto';
-import { LoggingUtil } from '../common/logging.util';
+import { InternalChatGuard } from './internal-chat.guard';
+import {
+  MessageDeletedRequestDto,
+  MessageUpdatedRequestDto,
+  SystemMessageRequestDto,
+} from './dto/message-event-request.dto';
 
 @Controller('api/internal/chat')
+@UseGuards(InternalChatGuard)
 export class ChatInternalController {
-  private readonly internalSecret: string;
-
   constructor(
     private readonly chatNotificationService: ChatNotificationService,
-    private readonly configService: ConfigService,
-  ) {
-    this.internalSecret = this.configService.getOrThrow<string>(
-      'INTERNAL_API_SECRET',
-    );
-  }
+  ) {}
 
   @Post('transaction-state')
   @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
   publishTransactionStateChanged(
-    @Headers('x-internal-secret') receivedSecret: string | undefined,
     @Body() payload: TransactionStateUpdateRequestDto,
   ): { ok: true } {
-    if (!this.isValidInternalSecret(receivedSecret)) {
-      LoggingUtil.error(
-        'ChatInternalController',
-        `내부 API 인증 실패: roomId=${payload.roomId}, productId=${payload.productId}`,
-      );
-      throw new UnauthorizedException('유효하지 않은 내부 인증 정보입니다.');
-    }
-
     this.chatNotificationService.broadcastTransactionStateChanged(payload);
     return { ok: true };
   }
 
-  private isValidInternalSecret(receivedSecret: string | undefined): boolean {
-    if (!receivedSecret) {
-      return false;
-    }
+  @Post('message-updated')
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  publishMessageUpdated(@Body() payload: MessageUpdatedRequestDto): {
+    ok: true;
+  } {
+    this.chatNotificationService.broadcastMessageUpdated(payload);
+    return { ok: true };
+  }
 
-    const receivedBuffer = Buffer.from(receivedSecret);
-    const expectedBuffer = Buffer.from(this.internalSecret);
+  @Post('message-deleted')
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  publishMessageDeleted(@Body() payload: MessageDeletedRequestDto): {
+    ok: true;
+  } {
+    this.chatNotificationService.broadcastMessageDeleted(payload);
+    return { ok: true };
+  }
 
-    if (receivedBuffer.length !== expectedBuffer.length) {
-      return false;
-    }
-
-    return timingSafeEqual(receivedBuffer, expectedBuffer);
+  @Post('system-message')
+  @UsePipes(
+    new ValidationPipe({
+      transform: true,
+      whitelist: true,
+      forbidNonWhitelisted: true,
+    }),
+  )
+  async publishSystemMessage(
+    @Body() payload: SystemMessageRequestDto,
+  ): Promise<{ ok: true }> {
+    await this.chatNotificationService.broadcastSystemMessage(payload);
+    return { ok: true };
   }
 }

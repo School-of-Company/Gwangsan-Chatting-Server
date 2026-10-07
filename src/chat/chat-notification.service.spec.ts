@@ -1,10 +1,22 @@
 import { ChatNotificationService } from './chat-notification.service';
+import { ServiceUnavailableException } from '@nestjs/common';
 
 describe('ChatNotificationService', () => {
   let service: ChatNotificationService;
 
   beforeEach(() => {
     service = new ChatNotificationService();
+  });
+
+  it('rejects a saved event when the socket server is not initialized', () => {
+    expect(() =>
+      service.broadcastMessageDeleted({
+        roomId: 7,
+        messageId: '123',
+        roomListChanged: true,
+        latestMessage: null,
+      }),
+    ).toThrow(ServiceUnavailableException);
   });
 
   it('targetMemberId가 있어도 방 전체에 transactionStateChanged 이벤트를 발행한다', () => {

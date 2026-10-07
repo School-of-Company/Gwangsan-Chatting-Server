@@ -54,7 +54,7 @@ export class ChatService {
 
     return rooms
       .map((room) => Number(room?.roomId))
-      .filter((roomId) => Number.isFinite(roomId) && roomId >= 1);
+      .filter((roomId) => Number.isSafeInteger(roomId) && roomId >= 1);
   }
 
   /**

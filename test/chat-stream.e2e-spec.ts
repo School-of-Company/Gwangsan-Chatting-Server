@@ -38,7 +38,7 @@ describe('Chat Stream E2E', () => {
       const url = req.url ?? '';
       if (url.startsWith('/api/chat/rooms')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end('[]');
+        res.end(JSON.stringify([77, 88, 99].map((roomId) => ({ roomId }))));
         return;
       }
       if (/^\/api\/chat\/room\/\d+\/sendable/.test(url)) {

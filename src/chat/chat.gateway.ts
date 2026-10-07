@@ -10,7 +10,7 @@ import {
   WebSocketServer,
   WsException,
 } from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
+import { Namespace, Socket } from 'socket.io';
 import { ChatService } from './chat.service';
 import { AuthService } from '../auth/auth.service';
 import { ChatMessageRequest } from './dto/chat-message-request.dto';
@@ -29,7 +29,7 @@ interface ClientData {
 export class ChatGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
-  @WebSocketServer() server: Server;
+  @WebSocketServer() server: Namespace;
 
   constructor(
     private readonly chatService: ChatService,
@@ -37,7 +37,7 @@ export class ChatGateway
     private readonly chatNotificationService: ChatNotificationService,
   ) {}
 
-  afterInit(server: Server) {
+  afterInit(server: Namespace) {
     this.server = server;
     this.chatNotificationService.setServer(server);
     server.use((socket, next) => {
@@ -111,16 +111,21 @@ export class ChatGateway
   }
 
   @SubscribeMessage('joinRoom')
-  handleJoinRoom(
+  async handleJoinRoom(
     @MessageBody() roomId: unknown,
     @ConnectedSocket() client: Socket,
-  ): void {
+  ): Promise<void> {
     this.assertAuthenticated(client);
     const id = Number(roomId);
-    if (!Number.isFinite(id) || id < 1) {
+    if (!Number.isSafeInteger(id) || id < 1) {
       throw new WsException('유효하지 않은 roomId입니다');
     }
-    void client.join(`roomId=${id}`);
+    const { token } = client.data as ClientData;
+    const roomIds = await this.chatService.fetchJoinedRoomIds(token);
+    if (!roomIds.includes(id)) {
+      throw new WsException('참여 중인 채팅방이 아닙니다');
+    }
+    await client.join(`roomId=${id}`);
     LoggingUtil.log(
       'ChatGateway',
       `클라이언트 방 참여: clientId=${client.id}, roomId=${id}`,
@@ -143,7 +148,7 @@ export class ChatGateway
   ): void {
     this.assertAuthenticated(client);
     const id = Number(roomId);
-    if (!Number.isFinite(id) || id < 1) {
+    if (!Number.isSafeInteger(id) || id < 1) {
       throw new WsException('유효하지 않은 roomId입니다');
     }
     LoggingUtil.log(
