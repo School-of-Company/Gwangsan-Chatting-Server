@@ -1,0 +1,15 @@
+# 호스트 node_modules(네이티브 바이너리)·빌드 산출물·비밀값이 이미지에 섞이지 않게 한다.
+.git
+.github
+.husky
+.claude
+.agents
+.omo
+node_modules
+dist
+coverage
+logs
+*.log
+.env
+.env.*
+!.env.example

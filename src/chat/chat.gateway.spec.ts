@@ -5,6 +5,8 @@ import { AuthService } from '../auth/auth.service';
 import { ChatNotificationService } from './chat-notification.service';
 import { MessageType } from './dto/message-type.enum';
 import { WsException } from '@nestjs/websockets';
+import { MetricsService } from '../telemetry/metrics.service';
+import { traceSocketEvent } from '../telemetry/socket-event';
 
 const mockChatService = {
   sendMessage: jest.fn(),
@@ -21,6 +23,16 @@ const mockChatNotificationService = {
 
 describe('ChatGateway', () => {
   let gateway: ChatGateway;
+  let metrics: MetricsService;
+
+  const eventCount = async (event: string, outcome: string) =>
+    (
+      await metrics.registry
+        .getSingleMetric('gwangsan_chat_events_total')!
+        .get()
+    ).values.find(
+      (v) => v.labels.event === event && v.labels.outcome === outcome,
+    )?.value;
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -39,10 +51,12 @@ describe('ChatGateway', () => {
           provide: ChatNotificationService,
           useValue: mockChatNotificationService,
         },
+        MetricsService,
       ],
     }).compile();
 
     gateway = module.get<ChatGateway>(ChatGateway);
+    metrics = module.get(MetricsService);
   });
 
   it('should be defined', () => {
@@ -82,6 +96,7 @@ describe('ChatGateway', () => {
       connected: true,
       data: { memberId: 9, nickname: '테스터', token: 'Bearer t' },
       join: jest.fn(),
+      onAny: jest.fn(),
     });
 
     // join 이 handleConnection 안에서 비동기로 일어나므로 마이크로태스크를 비운다.
@@ -113,6 +128,26 @@ describe('ChatGateway', () => {
 
       expect(client.join).toHaveBeenCalledWith('memberId=9');
       expect(client.join).toHaveBeenCalledTimes(1);
+      expect(await eventCount('connect', 'error')).toBe(1);
+    });
+
+    it('처리기가 없는 이벤트는 other/ignored 로만 집계한다', () => {
+      const client = makeClient();
+      mockChatService.fetchJoinedRoomIds.mockResolvedValue([]);
+
+      gateway.handleConnection(client as never);
+      const listener = (client.onAny.mock.calls as unknown[][])[0][0] as (
+        e: string,
+      ) => void;
+      listener('room:12345');
+      listener('sendMessage');
+
+      return eventCount('other', 'ignored').then((v) => expect(v).toBe(1));
+    });
+
+    it('연결 해제를 집계한다', async () => {
+      gateway.handleDisconnect({ id: 'socket-1' } as never);
+      expect(await eventCount('disconnect', 'success')).toBe(1);
     });
 
     it('조회 도중 연결이 끊기면 join 하지 않는다', async () => {
@@ -164,6 +199,18 @@ describe('ChatGateway', () => {
       expect(client.emit).toHaveBeenCalledWith('error', {
         message: '차단한 사용자입니다.',
       });
+    });
+
+    it('발신자에게 error 로 알린 실패도 이벤트 결과에 반영한다', async () => {
+      mockChatService.sendMessage.mockRejectedValue(new Error('redis down'));
+      gateway.server = makeServer() as never;
+
+      await traceSocketEvent(metrics, 'sendMessage', () =>
+        gateway.handleMessage(message as never, makeClient() as never),
+      );
+
+      expect(await eventCount('sendMessage', 'error')).toBe(1);
+      expect(await eventCount('sendMessage', 'success')).toBe(0);
     });
 
     it('정상 전송이면 토큰을 넘기고 방에 브로드캐스트한다', async () => {

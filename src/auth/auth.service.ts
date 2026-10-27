@@ -76,13 +76,10 @@ export class AuthService implements OnModuleInit {
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
       try {
-        LoggingUtil.log('AuthService', `토큰 캐시 히트: userId=${userId}`);
+        LoggingUtil.log('AuthService', '토큰 캐시 히트');
         return JSON.parse(cached) as MemberInfo;
       } catch {
-        LoggingUtil.error(
-          'AuthService',
-          `캐시 파싱 실패, 캐시 삭제: userId=${userId}`,
-        );
+        LoggingUtil.error('AuthService', '캐시 파싱 실패, 캐시 삭제');
         await this.redisService.del(cacheKey);
       }
     }
@@ -101,10 +98,7 @@ export class AuthService implements OnModuleInit {
         await this.redisService.set(cacheKey, JSON.stringify(memberInfo), ttl);
       }
 
-      LoggingUtil.log(
-        'AuthService',
-        `토큰 검증 완료 (Spring 호출): memberId=${memberInfo.memberId}`,
-      );
+      LoggingUtil.log('AuthService', '토큰 검증 완료 (Spring 호출)');
       return memberInfo;
     } catch (error) {
       if (axios.isAxiosError(error)) {

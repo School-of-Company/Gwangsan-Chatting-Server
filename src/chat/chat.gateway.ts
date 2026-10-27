@@ -1,4 +1,4 @@
-import { UsePipes, ValidationPipe } from '@nestjs/common';
+import { UseInterceptors, UsePipes, ValidationPipe } from '@nestjs/common';
 import {
   ConnectedSocket,
   MessageBody,
@@ -17,6 +17,13 @@ import { ChatMessageRequest } from './dto/chat-message-request.dto';
 import { MessageType } from './dto/message-type.enum';
 import { LoggingUtil } from '../common/logging.util';
 import { ChatNotificationService } from './chat-notification.service';
+import { MetricsService } from '../telemetry/metrics.service';
+import {
+  markSocketEventFailed,
+  SocketEventInterceptor,
+  toEventLabel,
+  traceSocketEvent,
+} from '../telemetry/socket-event';
 
 interface ClientData {
   memberId: number;
@@ -25,6 +32,7 @@ interface ClientData {
 }
 
 @UsePipes(new ValidationPipe({ transform: true }))
+@UseInterceptors(SocketEventInterceptor)
 @WebSocketGateway({ cors: true, namespace: '/api/chat' })
 export class ChatGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
@@ -35,11 +43,13 @@ export class ChatGateway
     private readonly chatService: ChatService,
     private readonly authService: AuthService,
     private readonly chatNotificationService: ChatNotificationService,
+    private readonly metrics: MetricsService,
   ) {}
 
   afterInit(server: Namespace) {
     this.server = server;
     this.chatNotificationService.setServer(server);
+    this.metrics.trackConnections(() => server.sockets.size);
     server.use((socket, next) => {
       const token = String(socket.handshake.auth.token ?? '');
       if (!token) {
@@ -66,11 +76,16 @@ export class ChatGateway
     if (memberId !== undefined && memberId !== null) {
       void client.join(`memberId=${memberId}`);
     }
-    LoggingUtil.log(
-      'ChatGateway',
-      `클라이언트 연결 성공: ${client.id}, memberId=${memberId}`,
+    // 처리기가 없는 이벤트는 Nest 가 조용히 버리므로 여기서만 집계한다.
+    client.onAny((event: unknown) => {
+      if (toEventLabel(event) === 'other') {
+        this.metrics.recordEvent('other', 'ignored');
+      }
+    });
+    LoggingUtil.log('ChatGateway', `클라이언트 연결 성공: ${client.id}`);
+    void traceSocketEvent(this.metrics, 'connect', () =>
+      this.joinMyRooms(client, token),
     );
-    void this.joinMyRooms(client, token);
   }
 
   /**
@@ -97,6 +112,7 @@ export class ChatGateway
         `참여 방 자동 join: clientId=${client.id}, count=${roomIds.length}`,
       );
     } catch (error) {
+      markSocketEventFailed(error);
       // 조회 실패해도 연결은 유지한다. 클라이언트가 joinRoom 을 보내면 종전대로 동작한다.
       LoggingUtil.error(
         'ChatGateway',
@@ -107,6 +123,7 @@ export class ChatGateway
   }
 
   handleDisconnect(client: Socket) {
+    this.metrics.recordEvent('disconnect', 'success');
     LoggingUtil.log('ChatGateway', `클라이언트 연결 해제: ${client.id}`);
   }
 
@@ -199,6 +216,7 @@ export class ChatGateway
         lastMessageTime: response.createdAt,
       });
     } catch (error) {
+      markSocketEventFailed(error);
       LoggingUtil.error(
         'ChatGateway',
         `메시지 처리 실패: clientId=${client.id}, roomId=${message.roomId}`,
