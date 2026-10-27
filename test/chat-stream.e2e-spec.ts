@@ -7,7 +7,10 @@ import { GenericContainer, StartedTestContainer } from 'testcontainers';
 import * as request from 'supertest';
 import * as http from 'http';
 import { AddressInfo } from 'net';
+import { SpanKind } from '@opentelemetry/api';
 import { AppModule } from '../src/app.module';
+import { MetricsService } from '../src/telemetry/metrics.service';
+import { installInMemoryTracing } from '../src/telemetry/in-memory-tracing.helper-spec';
 
 const JWT_SECRET = 'test-secret';
 const INTERNAL_API_SECRET = 'internal-test-secret';
@@ -21,6 +24,7 @@ describe('Chat Stream E2E', () => {
   let imageResponse: unknown;
   let requestedImageIds: string[] = [];
   let sendableAuthorization: string | undefined;
+  let tracing: ReturnType<typeof installInMemoryTracing>;
 
   beforeAll(async () => {
     jest.setTimeout(60000);
@@ -64,6 +68,10 @@ describe('Chat Stream E2E', () => {
     process.env.INTERNAL_API_SECRET = INTERNAL_API_SECRET;
     process.env.REDIS_HOST = redisHost;
     process.env.REDIS_PORT = String(redisPort);
+    // 내부 메트릭 리스너는 임의 포트로 띄워 다른 테스트/프로세스와 충돌하지 않게 한다.
+    process.env.METRICS_PORT = '0';
+    // 사전 로드 대신 메모리 트레이서로 수동 span(소켓 이벤트, 스트림 발행)의 연결을 검증한다.
+    tracing = installInMemoryTracing();
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
@@ -80,6 +88,7 @@ describe('Chat Stream E2E', () => {
     await app?.close();
     await new Promise<void>((resolve) => springStub?.close(() => resolve()));
     await redisContainer?.stop();
+    tracing?.uninstall();
   });
 
   function makeToken(sub: string): string {
@@ -218,6 +227,47 @@ describe('Chat Stream E2E', () => {
       expect(fields.senderId).toBe(String(memberId));
       expect(fields.content).toBe('안녕하세요');
       expect(fields.messageType).toBe('TEXT');
+    });
+
+    it('기존 필드는 그대로 두고 traceparent 를 선택 필드로 덧붙인다', async () => {
+      const entries = await redis.xrevrange(streamKey, '+', '-', 'COUNT', 1);
+      const raw = entries[0][1];
+      const fields: Record<string, string> = {};
+      for (let i = 0; i < raw.length; i += 2) fields[raw[i]] = raw[i + 1];
+
+      // 기존 스프링 컨슈머가 이름으로 읽는 필드는 형식 그대로다.
+      expect(Object.keys(fields).sort()).toEqual(
+        [
+          'content',
+          'createdAt',
+          'imageIds',
+          'messageId',
+          'messageType',
+          'roomId',
+          'senderId',
+          'traceparent',
+        ].sort(),
+      );
+      expect(fields.imageIds).toBe('[]');
+      expect(fields.createdAt).toMatch(/^\d+$/);
+
+      // traceparent 는 발행 span 을 가리키고, 발행 span 은 소켓 이벤트 루트 span 의 자식이다.
+      const spans = tracing.exporter.getFinishedSpans();
+      const producer = spans.find(
+        (s) =>
+          s.kind === SpanKind.PRODUCER &&
+          fields.traceparent ===
+            `00-${s.spanContext().traceId}-${s.spanContext().spanId}-01`,
+      );
+      expect(producer).toBeDefined();
+      const event = spans.find(
+        (s) => s.spanContext().spanId === producer!.parentSpanContext?.spanId,
+      );
+      expect(event?.name).toBe('socket.io sendMessage');
+      expect(event?.parentSpanContext).toBeUndefined();
+      expect(JSON.stringify(spans.map((s) => s.attributes))).not.toContain(
+        '안녕하세요',
+      );
     });
   });
 
@@ -471,6 +521,77 @@ describe('Chat Stream E2E', () => {
       });
 
       expect(received).toBe(true);
+    });
+  });
+
+  describe('internal metrics listener', () => {
+    function get(port: number, path: string) {
+      return new Promise<{ status: number; body: string }>(
+        (resolve, reject) => {
+          http
+            .get({ host: '127.0.0.1', port, path }, (res) => {
+              let body = '';
+              res.on('data', (c: Buffer) => (body += c.toString()));
+              res.on('end', () =>
+                resolve({ status: res.statusCode ?? 0, body }),
+              );
+            })
+            .on('error', reject);
+        },
+      );
+    }
+
+    it('별도 내부 포트의 /metrics 로 계약 지표를 노출한다', async () => {
+      const metricsPort = app.get(MetricsService).port!;
+      expect(metricsPort).toBeGreaterThan(0);
+      expect(metricsPort).not.toBe(getPort());
+
+      const { status, body } = await get(metricsPort, '/metrics');
+
+      expect(status).toBe(200);
+      expect(body).toContain('gwangsan_chat_connections ');
+      expect(body).toMatch(
+        /gwangsan_chat_events_total\{event="sendMessage",outcome="success"\} [1-9]/,
+      );
+      expect(body).toMatch(
+        /gwangsan_chat_events_total\{event="sendMessage",outcome="rejected"\} [1-9]/,
+      );
+      expect(body).toMatch(
+        /gwangsan_chat_publish_duration_seconds_count\{outcome="success"\} [1-9]/,
+      );
+      expect(body).toContain('le="0.005"');
+      expect(body).toContain('le="60"');
+      expect(body).toContain('process_cpu_seconds_total');
+    });
+
+    it('라벨 값은 고정 목록뿐이다(방/회원/메시지 ID 없음)', async () => {
+      const { body } = await get(app.get(MetricsService).port!, '/metrics');
+      const values = new Set<string>();
+      for (const line of body.split('\n')) {
+        if (!line.startsWith('gwangsan_chat_')) continue;
+        for (const m of line.matchAll(/(\w+)="([^"]*)"/g)) {
+          if (m[1] !== 'le') values.add(`${m[1]}=${m[2]}`);
+        }
+      }
+      const allowed = new Set([
+        ...[
+          'connect',
+          'disconnect',
+          'joinRoom',
+          'leaveRoom',
+          'sendMessage',
+          'other',
+        ].map((e) => `event=${e}`),
+        ...['success', 'rejected', 'error', 'ignored'].map(
+          (o) => `outcome=${o}`,
+        ),
+      ]);
+      for (const value of values) expect(allowed).toContain(value);
+    });
+
+    it('공개 앱 포트에서는 /metrics 를 제공하지 않는다', async () => {
+      const res = await request(app.getHttpServer()).get('/metrics');
+      expect(res.status).toBe(404);
     });
   });
 

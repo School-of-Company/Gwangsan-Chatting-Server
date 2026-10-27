@@ -201,14 +201,14 @@ export class ChatService {
 
       LoggingUtil.log(
         'ChatService',
-        `메시지 스트림 발행 성공: roomId=${message.roomId}, memberId=${memberId}`,
+        `메시지 스트림 발행 성공: roomId=${message.roomId}`,
       );
 
       return response;
     } catch (error) {
       LoggingUtil.error(
         'ChatService',
-        `메시지 스트림 발행 실패: roomId=${message.roomId}, memberId=${memberId}`,
+        `메시지 스트림 발행 실패: roomId=${message.roomId}`,
         error,
       );
       throw error;
