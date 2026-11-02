@@ -9,6 +9,7 @@ import * as http from 'http';
 import { AddressInfo } from 'net';
 import { SpanKind } from '@opentelemetry/api';
 import { AppModule } from '../src/app.module';
+import { authCacheKey } from '../src/auth/auth.service';
 import { MetricsService } from '../src/telemetry/metrics.service';
 import { installInMemoryTracing } from '../src/telemetry/in-memory-tracing.helper-spec';
 
@@ -95,17 +96,20 @@ describe('Chat Stream E2E', () => {
     return jwt.sign({ sub }, JWT_SECRET, { expiresIn: '1h' });
   }
 
+  /** 캐시를 채운 토큰을 돌려준다(캐시 키는 토큰 기준). */
   async function seedAuthCache(
     sub: string,
     memberId: number,
     nickname: string,
-  ): Promise<void> {
+  ): Promise<string> {
+    const token = makeToken(sub);
     await redis.set(
-      `auth:cache:${sub}`,
+      authCacheKey(token),
       JSON.stringify({ memberId, nickname }),
       'EX',
       3600,
     );
+    return token;
   }
 
   function getPort(): number {
@@ -142,10 +146,10 @@ describe('Chat Stream E2E', () => {
     const phoneNumber = 'test-phone-001';
     const streamKey = `chat:room:${roomId}:messages`;
     let socket: Socket;
+    let token: string;
 
     beforeAll(async () => {
-      await seedAuthCache(phoneNumber, memberId, nickname);
-      const token = makeToken(phoneNumber);
+      token = await seedAuthCache(phoneNumber, memberId, nickname);
       socket = await connect(getPort(), token);
       socket.emit('joinRoom', roomId);
       await new Promise((r) => setTimeout(r, 100));
@@ -154,7 +158,7 @@ describe('Chat Stream E2E', () => {
     afterAll(async () => {
       socket.disconnect();
       await redis.del(streamKey);
-      await redis.del(`auth:cache:${phoneNumber}`);
+      await redis.del(authCacheKey(token));
     });
 
     it('receiveMessage 이벤트를 발신자에게 보낸다', async () => {
@@ -322,14 +326,16 @@ describe('Chat Stream E2E', () => {
 
     let sender: Socket;
     let receiver: Socket;
+    let senderToken: string;
+    let receiverToken: string;
 
     beforeAll(async () => {
-      await seedAuthCache(phoneNumber, memberId, nickname);
-      await seedAuthCache('receiver-phone', 3, 'receiver');
+      senderToken = await seedAuthCache(phoneNumber, memberId, nickname);
+      receiverToken = await seedAuthCache('receiver-phone', 3, 'receiver');
 
       const port = getPort();
-      sender = await connect(port, `Bearer ${makeToken(phoneNumber)}`);
-      receiver = await connect(port, makeToken('receiver-phone'));
+      sender = await connect(port, `Bearer ${senderToken}`);
+      receiver = await connect(port, receiverToken);
 
       await new Promise((r) => setTimeout(r, 300));
 
@@ -341,8 +347,8 @@ describe('Chat Stream E2E', () => {
     afterAll(async () => {
       sender.disconnect();
       receiver.disconnect();
-      await redis.del(`auth:cache:${phoneNumber}`);
-      await redis.del('auth:cache:receiver-phone');
+      await redis.del(authCacheKey(senderToken));
+      await redis.del(authCacheKey(receiverToken));
       await redis.del(`chat:room:${roomId}:messages`);
     });
 
@@ -603,16 +609,22 @@ describe('Chat Stream E2E', () => {
     const otherPhoneNumber = 'test-phone-004';
     let targetSocket: Socket;
     let otherSocket: Socket;
+    let targetToken: string;
+    let otherToken: string;
 
     beforeAll(async () => {
-      await seedAuthCache(
+      targetToken = await seedAuthCache(
         targetPhoneNumber,
         targetMemberId,
         'transaction-listener',
       );
-      await seedAuthCache(otherPhoneNumber, otherMemberId, 'other-listener');
-      targetSocket = await connect(getPort(), makeToken(targetPhoneNumber));
-      otherSocket = await connect(getPort(), makeToken(otherPhoneNumber));
+      otherToken = await seedAuthCache(
+        otherPhoneNumber,
+        otherMemberId,
+        'other-listener',
+      );
+      targetSocket = await connect(getPort(), targetToken);
+      otherSocket = await connect(getPort(), otherToken);
       targetSocket.emit('joinRoom', roomId);
       otherSocket.emit('joinRoom', roomId);
       await new Promise((r) => setTimeout(r, 100));
@@ -621,8 +633,8 @@ describe('Chat Stream E2E', () => {
     afterAll(async () => {
       targetSocket.disconnect();
       otherSocket.disconnect();
-      await redis.del(`auth:cache:${targetPhoneNumber}`);
-      await redis.del(`auth:cache:${otherPhoneNumber}`);
+      await redis.del(authCacheKey(targetToken));
+      await redis.del(authCacheKey(otherToken));
     });
 
     it('내부 API 호출 시 방 참여자 양쪽 모두에게 transactionStateChanged 이벤트를 보낸다', async () => {

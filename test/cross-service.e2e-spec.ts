@@ -6,7 +6,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as request from 'supertest';
 import { execFileSync } from 'child_process';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import {
   GenericContainer,
   StartedTestContainer,
@@ -321,13 +321,14 @@ describe('Cross-Service observability E2E (Socket.IO → Redis Stream → Spring
   }
 
   async function connect(sub: string, memberId: number): Promise<Socket> {
+    const token = makeToken(sub);
     await redis.set(
-      `auth:cache:${sub}`,
+      // 채팅 서버 인증 캐시 계약: auth:cache:<토큰 sha256>
+      `auth:cache:${createHash('sha256').update(token).digest('hex')}`,
       JSON.stringify({ memberId, nickname: `n${memberId}` }),
       'EX',
       3600,
     );
-    const token = makeToken(sub);
     const socket = await new Promise<Socket>((resolve, reject) => {
       const s = io(`http://127.0.0.1:${hostPort(chatC, 3000)}/api/chat`, {
         auth: { token: `Bearer ${token}` },
