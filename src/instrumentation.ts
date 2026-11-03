@@ -52,7 +52,7 @@ const sdk = new NodeSDK({
         isIgnoredIncomingPath(req.url),
     }),
     new IORedisInstrumentation({
-      // 키(auth:cache:<회원>)와 값(채팅 본문)이 남지 않게 명령 이름만 기록한다.
+      // 키(auth:cache:<토큰 해시>)와 값(채팅 본문)이 남지 않게 명령 이름만 기록한다.
       dbStatementSerializer: (cmdName) => cmdName,
     }),
   ],

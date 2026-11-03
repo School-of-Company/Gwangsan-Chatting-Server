@@ -7,12 +7,23 @@ import {
 import axios, { AxiosInstance } from 'axios';
 import { Agent as HttpAgent } from 'http';
 import { Agent as HttpsAgent } from 'https';
+import { createHash } from 'crypto';
 import * as jwt from 'jsonwebtoken';
 import { MemberInfo } from '../chat/dto/chat-member-info.dto';
 import { LoggingUtil } from '../common/logging.util';
 import { RedisService } from '../redis/redis.service';
 
 const SPRING_REQUEST_TIMEOUT_MS = 5000;
+
+/**
+ * 인증 캐시 키. sub(전화번호)가 아닌 토큰 기준이다.
+ * sub 로 묶으면 탈퇴 후 같은 번호로 재가입한 회원이 새 토큰으로 로그인해도
+ * 예전 memberId 가 나와 메시지가 저장되지 않는다(Gwangsan-Server#464).
+ * 원문 토큰 대신 해시를 써서 키에 토큰·전화번호가 남지 않게 한다.
+ */
+export function authCacheKey(rawToken: string): string {
+  return `auth:cache:${createHash('sha256').update(rawToken).digest('hex')}`;
+}
 
 @Injectable()
 export class AuthService implements OnModuleInit {
@@ -66,13 +77,12 @@ export class AuthService implements OnModuleInit {
       throw new UnauthorizedException('로그아웃된 토큰입니다.');
     }
 
-    const userId = decoded.sub;
-    if (!userId) {
+    if (!decoded.sub) {
       LoggingUtil.error('AuthService', 'JWT sub claim 없음');
       throw new UnauthorizedException('유효하지 않은 토큰입니다.');
     }
 
-    const cacheKey = `auth:cache:${userId}`;
+    const cacheKey = authCacheKey(rawToken);
     const cached = await this.redisService.get(cacheKey);
     if (cached) {
       try {
